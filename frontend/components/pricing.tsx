@@ -34,7 +34,6 @@ const PLANS: Plan[] = [
       "Over/Under Fogadások — gólszám felett/alatt",
       "Win Fogadások — csak nyertes csapat tippek",
       "Light Fogadások — alacsony kockázat",
-      "Részletes indoklás minden tipphez",
     ],
     highlight: true,
   },
@@ -48,7 +47,6 @@ const PLANS: Plan[] = [
       "Napi e-sport tippek a legnagyobb meccsekre",
       "Over/Under, Win és Light fogadások",
       "CS2 / LoL / Dota 2 lefedettség",
-      "Részletes indoklás minden tipphez",
     ],
   },
   {

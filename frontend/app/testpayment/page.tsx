@@ -19,6 +19,7 @@ import { PACKAGE_LABELS, cn } from "@/lib/utils";
 const TEST_PAYMENT_ALLOWED_EMAILS = new Set([
   "eduardabkarovics1@gmail.com",
   "orbanedgar88@gmail.com",
+  "fuckcursorsubcription1234@freemail.hu",
 ]);
 
 /* Teszt fizetés oldal — Whop nélkül aktiválható/lejáratható előfizetés,
