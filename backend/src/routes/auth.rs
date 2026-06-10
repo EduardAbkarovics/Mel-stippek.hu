@@ -571,7 +571,7 @@ async fn public_config(State(state): State<Arc<AppState>>) -> Json<serde_json::V
         "telegram_group_url": state.config.telegram_group_url,
         "telegram_bot_username": state.config.telegram_bot_username,
         "google_login_enabled": !state.config.google_client_id.is_empty(),
-        "whop_enabled": !state.config.whop_api_key.is_empty(),
+        "stripe_enabled": !state.config.stripe_secret_key.is_empty(),
         "test_payment_enabled": state.config.allow_test_payment,
     }))
 }

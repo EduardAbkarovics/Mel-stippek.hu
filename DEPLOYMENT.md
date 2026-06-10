@@ -52,13 +52,13 @@ FRONTEND_URL=https://melostippek.hu
 BACKEND_URL=https://melostippek.hu
 ```
 
-Ez azert kell, mert a Google OAuth es a Whop webhook is a publikus domainen
+Ez azert kell, mert a Google OAuth es a Stripe webhook is a publikus domainen
 keresztul eri el az API-t, a Vercel rewrite pedig tovabbitja a Rust backendhez.
 
-Whop webhook URL:
+Stripe webhook URL:
 
 ```txt
-https://melostippek.hu/api/webhooks/whop
+https://melostippek.hu/api/webhooks/stripe
 ```
 
 Google OAuth redirect URI:

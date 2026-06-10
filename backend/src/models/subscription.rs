@@ -13,10 +13,9 @@ pub struct Subscription {
     pub package: String,
     /// "active" | "cancelled" | "expired"
     pub status: String,
+    /// Stripe subscription ID (egyszeri teszt fizetésnél None).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub whop_membership_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub whop_plan_id: Option<String>,
+    pub stripe_subscription_id: Option<String>,
     pub started_at: BsonDateTime,
     /// Lejárat — ha elmúlt, a user NEM fér hozzá a tartalomhoz.
     pub expires_at: BsonDateTime,

@@ -66,7 +66,7 @@ export const api = {
       telegram_group_url: string;
       telegram_bot_username: string;
       google_login_enabled: boolean;
-      whop_enabled: boolean;
+      stripe_enabled: boolean;
       test_payment_enabled: boolean;
     }>("/api/config"),
   myTips: () =>
@@ -76,7 +76,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ package: pkg }),
     }),
-  testPayment: (pkg: string, action: "activate" | "expire") =>
+  // 1 USD-s teszt Stripe checkout — visszaadja a fizetési URL-t
+  testCheckout: (pkg: string) =>
+    request<{ url: string }>("/api/payments/test-checkout", {
+      method: "POST",
+      body: JSON.stringify({ package: pkg }),
+    }),
+  // Stripe-tól visszatérés után: aktiválja az előfizetést a session alapján
+  confirmPayment: (sessionId: string) =>
+    request<{ ok: boolean; status: string }>(
+      `/api/payments/confirm?session_id=${encodeURIComponent(sessionId)}`
+    ),
+  // teszt segéd: előfizetés azonnali lejáratása
+  testPayment: (pkg: string, action: "expire") =>
     request<{ ok: boolean; status: string }>("/api/payments/test", {
       method: "POST",
       body: JSON.stringify({ package: pkg, action }),

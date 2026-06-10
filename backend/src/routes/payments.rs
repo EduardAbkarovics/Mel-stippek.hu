@@ -1,8 +1,8 @@
 use axum::{
     body::Bytes,
-    extract::State,
+    extract::{Query, State},
     http::HeaderMap,
-    routing::post,
+    routing::{get, post},
     Json, Router,
 };
 use mongodb::bson::{oid::ObjectId, DateTime as BsonDateTime};
@@ -12,27 +12,84 @@ use crate::{
     error::{AppError, AppResult},
     middleware::AuthUser,
     models::subscription::PACKAGES,
-    services::{mongo as db, whop},
+    services::{mongo as db, stripe},
     AppState,
 };
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/api/payments/checkout", post(create_checkout))
+        .route("/api/payments/test-checkout", post(test_checkout))
         .route("/api/payments/test", post(test_payment))
-        .route("/api/webhooks/whop", post(whop_webhook))
+        .route("/api/payments/confirm", get(confirm_payment))
+        .route("/api/webhooks/stripe", post(stripe_webhook))
+}
+
+#[derive(serde::Deserialize)]
+struct CheckoutRequest {
+    package: String,
+}
+
+/// Stripe előfizetéses checkout indítása — visszaadja a fizetési URL-t.
+async fn create_checkout(
+    State(state): State<Arc<AppState>>,
+    auth: AuthUser,
+    Json(req): Json<CheckoutRequest>,
+) -> AppResult<Json<serde_json::Value>> {
+    if !PACKAGES.contains(&req.package.as_str()) {
+        return Err(AppError::BadRequest("Ismeretlen csomag".into()));
+    }
+
+    let url = stripe::create_subscription_checkout(
+        &state.http,
+        &state.config,
+        &req.package,
+        &auth.user_id.to_hex(),
+        &auth.email,
+    )
+    .await
+    .map_err(AppError::Internal)?;
+
+    Ok(Json(serde_json::json!({ "url": url })))
+}
+
+/// 1 USD-s teszt Stripe checkout — CSAK ha ALLOW_TEST_PAYMENT=true és a user engedélyezett.
+/// A sikeres fizetés a kiválasztott csomagot 30 napra aktiválja.
+async fn test_checkout(
+    State(state): State<Arc<AppState>>,
+    auth: AuthUser,
+    Json(req): Json<CheckoutRequest>,
+) -> AppResult<Json<serde_json::Value>> {
+    if !state.config.allow_test_payment || !state.config.can_use_test_payment(&auth.email) {
+        return Err(AppError::Forbidden);
+    }
+    if !PACKAGES.contains(&req.package.as_str()) {
+        return Err(AppError::BadRequest("Ismeretlen csomag".into()));
+    }
+
+    let url = stripe::create_test_checkout(
+        &state.http,
+        &state.config,
+        &req.package,
+        &auth.user_id.to_hex(),
+        &auth.email,
+    )
+    .await
+    .map_err(AppError::Internal)?;
+
+    tracing::info!("TESZT checkout ($1) létrehozva: user={} csomag={}", auth.email, req.package);
+    Ok(Json(serde_json::json!({ "url": url })))
 }
 
 #[derive(serde::Deserialize)]
 struct TestPaymentRequest {
     package: String,
-    /// "activate" = 30 napos teszt előfizetés | "expire" = azonnali lejáratás
+    /// jelenleg csak "expire" — azonnali lejáratás (a lejárt user élmény tesztelésére)
     action: String,
 }
 
-/// Teszt fizetés Whop nélkül — CSAK ha ALLOW_TEST_PAYMENT=true (élesben kapcsold ki!).
-/// Aktiválással a teljes előfizetői folyamat tesztelhető, lejáratással pedig az,
-/// hogy a lejárt user tényleg nem látja a tartalmat.
+/// Teszt segéd: előfizetés azonnali lejáratása (annak tesztelésére, hogy a lejárt
+/// user tényleg nem látja a tartalmat). Aktiváláshoz a teszt fizetést kell használni.
 async fn test_payment(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
@@ -46,22 +103,6 @@ async fn test_payment(
     }
 
     match req.action.as_str() {
-        "activate" => {
-            let expires =
-                (chrono::Utc::now() + chrono::Duration::days(30)).timestamp_millis();
-            db::upsert_subscription(
-                &state.mongo.subscriptions,
-                auth.user_id,
-                &req.package,
-                Some(format!("test_{}_{}", auth.user_id.to_hex(), req.package)),
-                None,
-                BsonDateTime::from_millis(expires),
-            )
-            .await
-            .map_err(AppError::Internal)?;
-            tracing::info!("TESZT előfizetés aktiválva: user={} csomag={}", auth.email, req.package);
-            Ok(Json(serde_json::json!({ "ok": true, "status": "active" })))
-        }
         "expire" => {
             let found =
                 db::expire_subscription(&state.mongo.subscriptions, auth.user_id, &req.package)
@@ -75,193 +116,153 @@ async fn test_payment(
             tracing::info!("TESZT előfizetés lejáratva: user={} csomag={}", auth.email, req.package);
             Ok(Json(serde_json::json!({ "ok": true, "status": "expired" })))
         }
-        _ => Err(AppError::BadRequest("Ismeretlen művelet".into())),
+        _ => Err(AppError::BadRequest(
+            "Aktiváláshoz használd a teszt fizetést ($1)".into(),
+        )),
     }
 }
 
 #[derive(serde::Deserialize)]
-struct CheckoutRequest {
-    package: String,
+struct ConfirmQuery {
+    session_id: String,
 }
 
-/// Whop checkout indítása — visszaadja a fizetési URL-t.
-async fn create_checkout(
+/// Fizetés megerősítése a frontendről (a Stripe-tól visszatérés után) — webhook nélkül,
+/// pl. localhoston is aktiválja az előfizetést, ha a session ki van fizetve.
+async fn confirm_payment(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
-    Json(req): Json<CheckoutRequest>,
+    Query(q): Query<ConfirmQuery>,
 ) -> AppResult<Json<serde_json::Value>> {
-    if !PACKAGES.contains(&req.package.as_str()) {
-        return Err(AppError::BadRequest("Ismeretlen csomag".into()));
+    let session = stripe::get_checkout_session(&state.http, &state.config, &q.session_id)
+        .await
+        .map_err(AppError::Internal)?;
+
+    // csak a saját session-jét erősítheti meg
+    let client_ref = session["client_reference_id"].as_str().unwrap_or("");
+    if client_ref != auth.user_id.to_hex() {
+        return Err(AppError::Forbidden);
     }
-    let plan_id = whop::plan_id_for_package(&state.config, &req.package).ok_or_else(|| {
-        AppError::BadRequest(format!(
-            "A(z) {} csomag Whop plan ID-je nincs beállítva a szerveren",
-            req.package
-        ))
-    })?;
 
-    let url = whop::create_checkout(
-        &state.http,
-        &state.config,
-        &plan_id,
-        &auth.user_id.to_hex(),
-        &req.package,
-    )
-    .await
-    .map_err(AppError::Internal)?;
+    if session["payment_status"].as_str() != Some("paid") {
+        return Ok(Json(serde_json::json!({ "ok": false, "status": "pending" })));
+    }
 
-    Ok(Json(serde_json::json!({ "url": url })))
+    fulfill_session(&state, &session).await?;
+    Ok(Json(serde_json::json!({ "ok": true, "status": "active" })))
 }
 
-/// Whop webhook: előfizetés aktiválás / megújítás / lemondás kezelése.
-/// Az aláírást ellenőrizzük (webhook-id, webhook-timestamp, webhook-signature headerek).
-async fn whop_webhook(
+/// Stripe webhook: előfizetés aktiválás / megújítás / lemondás kezelése.
+async fn stripe_webhook(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> AppResult<Json<serde_json::Value>> {
-    // Aláírás ellenőrzés, ha van secret beállítva
-    if !state.config.whop_webhook_secret.is_empty() {
-        let id = headers.get("webhook-id").and_then(|v| v.to_str().ok()).unwrap_or("");
-        let ts = headers
-            .get("webhook-timestamp")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-        let sig = headers
-            .get("webhook-signature")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-        if !whop::verify_webhook_signature(&state.config.whop_webhook_secret, id, ts, &body, sig) {
-            tracing::warn!("Whop webhook: érvénytelen aláírás");
+    let sig = headers
+        .get("stripe-signature")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    if !state.config.stripe_webhook_secret.is_empty() {
+        if !stripe::verify_webhook_signature(&body, sig, &state.config.stripe_webhook_secret) {
+            tracing::warn!("Stripe webhook: érvénytelen aláírás");
             return Err(AppError::Forbidden);
         }
     } else {
-        tracing::warn!("Whop webhook: WHOP_WEBHOOK_SECRET nincs beállítva, aláírás NEM ellenőrizve");
+        tracing::warn!("Stripe webhook: STRIPE_WEBHOOK_SECRET nincs beállítva, aláírás NEM ellenőrizve");
     }
 
-    let payload: serde_json::Value =
+    let event: serde_json::Value =
         serde_json::from_slice(&body).map_err(|_| AppError::BadRequest("Hibás JSON".into()))?;
 
-    let event_type = payload["type"]
-        .as_str()
-        .or_else(|| payload["action"].as_str())
-        .unwrap_or("");
-    let data = &payload["data"];
-
-    tracing::info!("Whop webhook esemény: {event_type}");
+    let event_type = event["type"].as_str().unwrap_or("");
+    tracing::info!("Stripe webhook esemény: {event_type}");
 
     match event_type {
-        // membership érvényes lett (első fizetés vagy megújítás)
-        "membership.activated" | "membership.went_valid" | "membership_went_valid" => {
-            handle_membership_valid(&state, data).await?;
+        // első fizetés / teszt fizetés sikeres
+        "checkout.session.completed" => {
+            fulfill_session(&state, &event["data"]["object"]).await?;
         }
-        "payment.succeeded" | "payment_succeeded" => {
-            // a payment objektumban benne lehet a membership — ha igen, frissítjük
-            if data["membership"].is_object() {
-                handle_membership_valid(&state, &data["membership"]).await?;
-            } else if data["metadata"]["user_id"].is_string() {
-                handle_membership_valid(&state, data).await?;
+        // havi megújulás sikeres → előfizetés meghosszabbítása
+        "invoice.paid" | "invoice.payment_succeeded" => {
+            let sub_id = event["data"]["object"]["subscription"].as_str().unwrap_or("");
+            if !sub_id.is_empty() {
+                let expires =
+                    (chrono::Utc::now() + chrono::Duration::days(31)).timestamp_millis();
+                db::renew_subscription_by_stripe_id(
+                    &state.mongo.subscriptions,
+                    sub_id,
+                    BsonDateTime::from_millis(expires),
+                )
+                .await
+                .map_err(AppError::Internal)?;
+                tracing::info!("Előfizetés megújítva: stripe_sub={sub_id}");
             }
         }
-        // membership érvénytelen lett (lemondás, sikertelen fizetés)
-        "membership.deactivated" | "membership.went_invalid" | "membership_went_invalid" => {
-            let membership_id = data["id"].as_str().unwrap_or("");
-            if !membership_id.is_empty() {
-                db::deactivate_subscription_by_membership(&state.mongo.subscriptions, membership_id)
-                    .await
-                    .map_err(AppError::Internal)?;
-                tracing::info!("Előfizetés deaktiválva: membership={membership_id}");
+        // lemondás / sikertelen fizetés → deaktiválás
+        "customer.subscription.deleted" | "customer.subscription.updated" => {
+            let sub = &event["data"]["object"];
+            let sub_id = sub["id"].as_str().unwrap_or("");
+            let status = sub["status"].as_str().unwrap_or("");
+            if event_type.ends_with("deleted")
+                || matches!(status, "canceled" | "unpaid" | "incomplete_expired")
+            {
+                if !sub_id.is_empty() {
+                    db::deactivate_subscription_by_stripe_id(&state.mongo.subscriptions, sub_id)
+                        .await
+                        .map_err(AppError::Internal)?;
+                    tracing::info!("Előfizetés deaktiválva: stripe_sub={sub_id}");
+                }
             }
         }
         _ => {
-            tracing::info!("Whop webhook: nem kezelt esemény: {event_type}");
+            tracing::info!("Stripe webhook: nem kezelt esemény: {event_type}");
         }
     }
 
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
-/// Membership adatból előfizetés aktiválás: user a metadata.user_id-ból (vagy email alapján),
-/// csomag a plan ID-ból (vagy metadata.package-ből), lejárat a renewal_period_end-ből (vagy +30 nap).
-async fn handle_membership_valid(state: &AppState, data: &serde_json::Value) -> AppResult<()> {
-    let membership_id = data["id"].as_str().map(|s| s.to_string());
+/// Egy kifizetett checkout session feldolgozása: a metaadatból kiolvassa a usert és a csomagot,
+/// majd aktiválja az előfizetést. Egyszeri (teszt) fizetésnél 30 nap, előfizetésnél 31 nap
+/// (a megújulást az invoice.paid hosszabbítja).
+async fn fulfill_session(state: &AppState, session: &serde_json::Value) -> AppResult<()> {
+    let package = session["metadata"]["package"].as_str().unwrap_or("");
+    if !PACKAGES.contains(&package) {
+        tracing::warn!("Stripe fulfill: ismeretlen csomag a metaadatban: '{package}'");
+        return Ok(());
+    }
 
-    let plan_id = data["plan_id"]
+    let user_id = session["metadata"]["user_id"]
         .as_str()
-        .or_else(|| data["plan"]["id"].as_str())
-        .or_else(|| data["plan"].as_str())
-        .unwrap_or("")
-        .to_string();
-
-    // csomag meghatározása: plan ID-ból, vagy metadata.package-ből
-    let package = whop::package_for_plan_id(&state.config, &plan_id)
-        .map(|s| s.to_string())
-        .or_else(|| data["metadata"]["package"].as_str().map(|s| s.to_string()));
-    let package = match package {
-        Some(p) if PACKAGES.contains(&p.as_str()) => p,
-        _ => {
-            tracing::warn!("Whop webhook: ismeretlen plan/csomag: {plan_id}");
+        .filter(|s| !s.is_empty())
+        .or_else(|| session["client_reference_id"].as_str())
+        .unwrap_or("");
+    let user_oid = match ObjectId::parse_str(user_id) {
+        Ok(oid) => oid,
+        Err(_) => {
+            tracing::warn!("Stripe fulfill: érvénytelen user_id: '{user_id}'");
             return Ok(());
         }
     };
 
-    // user meghatározása: metadata.user_id, vagy email alapján
-    let user_oid = if let Some(uid) = data["metadata"]["user_id"].as_str() {
-        ObjectId::parse_str(uid).ok()
-    } else {
-        None
-    };
-    let user_oid = match user_oid {
-        Some(oid) => Some(oid),
-        None => {
-            let email = data["user"]["email"]
-                .as_str()
-                .or_else(|| data["user_email"].as_str())
-                .unwrap_or("");
-            if email.is_empty() {
-                None
-            } else {
-                db::find_user_by_email(&state.mongo.users, email)
-                    .await
-                    .map_err(AppError::Internal)?
-                    .and_then(|u| u.id)
-            }
-        }
-    };
-    let user_oid = match user_oid {
-        Some(oid) => oid,
-        None => {
-            tracing::warn!("Whop webhook: nem azonosítható a user (nincs metadata.user_id / email)");
-            return Ok(());
-        }
-    };
-
-    // lejárat: renewal_period_end / expires_at, különben most + 30 nap
-    let expires_at = data["renewal_period_end"]
-        .as_str()
-        .or_else(|| data["expires_at"].as_str())
-        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-        .map(|d| d.timestamp_millis())
-        .or_else(|| {
-            // unix másodperc formátum
-            data["renewal_period_end"]
-                .as_i64()
-                .or_else(|| data["expires_at"].as_i64())
-                .map(|s| s * 1000)
-        })
-        .unwrap_or_else(|| (chrono::Utc::now() + chrono::Duration::days(30)).timestamp_millis());
+    let stripe_sub_id = session["subscription"].as_str().map(|s| s.to_string());
+    let is_test = session["metadata"]["test_payment"].as_str() == Some("true");
+    let days = if is_test { 30 } else { 31 };
+    let expires = (chrono::Utc::now() + chrono::Duration::days(days)).timestamp_millis();
 
     db::upsert_subscription(
         &state.mongo.subscriptions,
         user_oid,
-        &package,
-        membership_id,
-        if plan_id.is_empty() { None } else { Some(plan_id) },
-        BsonDateTime::from_millis(expires_at),
+        package,
+        stripe_sub_id,
+        BsonDateTime::from_millis(expires),
     )
     .await
     .map_err(AppError::Internal)?;
 
-    tracing::info!("Előfizetés aktiválva: user={user_oid} csomag={package}");
+    tracing::info!(
+        "Előfizetés aktiválva: user={user_oid} csomag={package} (teszt={is_test})"
+    );
     Ok(())
 }

@@ -12,12 +12,9 @@ pub struct Config {
     pub google_client_secret: String,
     /// Admin emailek env-ből (ADMIN_EMAILS, vesszővel elválasztva) — nem hardcode-olt.
     pub admin_emails: Vec<String>,
-    // Whop
-    pub whop_api_key: String,
-    pub whop_webhook_secret: String,
-    pub whop_plan_foci: String,
-    pub whop_plan_esport: String,
-    pub whop_plan_elo: String,
+    // Stripe
+    pub stripe_secret_key: String,
+    pub stripe_webhook_secret: String,
     // Odds API-k (proxy-zva, kulcs nem kerül ki a frontendre)
     pub odds_api_key: String,
     pub pandascore_api_key: String,
@@ -59,11 +56,8 @@ impl Config {
                 .map(|s| s.trim().to_lowercase())
                 .filter(|s| !s.is_empty())
                 .collect(),
-            whop_api_key: std::env::var("WHOP_API_KEY").unwrap_or_default(),
-            whop_webhook_secret: std::env::var("WHOP_WEBHOOK_SECRET").unwrap_or_default(),
-            whop_plan_foci: std::env::var("WHOP_PLAN_FOCI").unwrap_or_default(),
-            whop_plan_esport: std::env::var("WHOP_PLAN_ESPORT").unwrap_or_default(),
-            whop_plan_elo: std::env::var("WHOP_PLAN_ELO").unwrap_or_default(),
+            stripe_secret_key: std::env::var("STRIPE_SECRET_KEY").unwrap_or_default(),
+            stripe_webhook_secret: std::env::var("STRIPE_WEBHOOK_SECRET").unwrap_or_default(),
             odds_api_key: std::env::var("ODDS_API_KEY").unwrap_or_default(),
             pandascore_api_key: std::env::var("PANDASCORE_API_KEY").unwrap_or_default(),
             smtp_host: std::env::var("SMTP_HOST").unwrap_or_else(|_| "smtp.gmail.com".into()),

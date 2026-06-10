@@ -7,14 +7,30 @@ import { Navbar } from "@/components/navbar";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 
-/* Whop fizetés utáni visszatérési oldal. A webhook pár másodperc alatt
-   aktiválja az előfizetést — addig frissítgetjük a usert. */
+/* Stripe fizetés utáni visszatérési oldal. A session_id alapján azonnal megerősítjük
+   a fizetést (webhook nélkül is működik), illetve a webhook is aktiválhatja — addig
+   frissítgetjük a usert. */
 export default function PaymentSuccessPage() {
   const { setUser, isAuthenticated } = useAuthStore();
   const [activated, setActivated] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) return;
+
+    // azonnali megerősítés a Stripe session alapján
+    const sessionId = new URLSearchParams(window.location.search).get("session_id");
+    if (sessionId) {
+      api
+        .confirmPayment(sessionId)
+        .then(async () => {
+          const user = await api.me();
+          setUser(user);
+          if (user.packages.length > 0) setActivated(true);
+        })
+        .catch(() => {});
+    }
+
+    // tartalék: a webhook is aktiválhat, ezért pollozunk is
     let tries = 0;
     const interval = setInterval(async () => {
       tries++;

@@ -73,10 +73,8 @@ Toltsd ki ezt a fajlt eles kulcsokkal:
 
 Legalabb ezek kellenek:
   MONGODB_URL
-  WHOP_API_KEY
-  WHOP_PLAN_FOCI
-  WHOP_PLAN_ESPORT
-  WHOP_PLAN_ELO
+  STRIPE_SECRET_KEY
+  STRIPE_WEBHOOK_SECRET
 
 Utana futtasd ujra:
   cd ${APP_DIR}

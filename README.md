@@ -6,7 +6,7 @@ Előfizetés-alapú tippmix oldal — foci, e-sport és élő fogadási tippek m
 
 - **Backend:** Rust (Axum) + MongoDB Atlas — port `8080`
 - **Frontend:** Next.js 15 + TypeScript + Tailwind (shadcn struktúra) — port `3000`
-- **Fizetés:** Whop API (3 havi csomag)
+- **Fizetés:** Stripe Checkout (3 havi előfizetéses csomag)
 - **Login:** Email+jelszó, Google OAuth, Telegram widget — sessionök MongoDB-ben
 
 ## Indítás
@@ -47,9 +47,8 @@ A rendszer ezek nélkül is fut, de a hozzájuk tartozó funkció inaktív:
 
 | Kulcs | Mihez kell | Honnan |
 |---|---|---|
-| `WHOP_API_KEY` | fizetés | whop.com/dashboard → Developer → API keys |
-| `WHOP_WEBHOOK_SECRET` | webhook aláírás ellenőrzés | Whop dashboard → Webhooks (URL: `https://<backend>/api/webhooks/whop`) |
-| `WHOP_PLAN_FOCI / ESPORT / ELO` | csomag ↔ plan összerendelés | a Whop-on létrehozott 3 plan ID-je |
+| `STRIPE_SECRET_KEY` | fizetés | Stripe Dashboard → Developers → API keys (`sk_live_` / teszthez `sk_test_`) |
+| `STRIPE_WEBHOOK_SECRET` | webhook aláírás ellenőrzés | Stripe Dashboard → Developers → Webhooks (URL: `https://<backend>/api/webhooks/stripe`) |
 | `ODDS_API_KEY` | foci + élő meccsnaptár az adminban | the-odds-api.com (ingyenes: 500 kérés/hó) |
 | `PANDASCORE_API_KEY` | e-sport meccsnaptár | pandascore.co (ingyenes) |
 | `SMTP_PASS` | jelszó reset email Gmailen át | Google fiók → Biztonság → Alkalmazásjelszavak |

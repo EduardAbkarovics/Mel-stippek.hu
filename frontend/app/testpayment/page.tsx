@@ -22,8 +22,8 @@ const TEST_PAYMENT_ALLOWED_EMAILS = new Set([
   "fuckcursorsubcription1234@freemail.hu",
 ]);
 
-/* Teszt fizetés oldal — Whop nélkül aktiválható/lejáratható előfizetés,
-   hogy a teljes előfizetői folyamat tesztelhető legyen.
+/* Teszt fizetés oldal — valódi Stripe $1 fizetéssel aktiválható az előfizetés,
+   illetve lejáratható, hogy a teljes előfizetői folyamat tesztelhető legyen.
    Csak akkor működik, ha a backenden ALLOW_TEST_PAYMENT=true. */
 export default function TestPaymentPage() {
   const router = useRouter();
@@ -45,18 +45,47 @@ export default function TestPaymentPage() {
       .publicConfig()
       .then((c) => setEnabled(c.test_payment_enabled))
       .catch(() => setEnabled(false));
-    api.me().then(setUser).catch(() => {});
+
+    // Stripe-tól visszatérés: a fizetést megerősítjük és aktiváljuk az előfizetést
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("payment") === "success" && params.get("session_id")) {
+      const sessionId = params.get("session_id")!;
+      api
+        .confirmPayment(sessionId)
+        .then(async () => {
+          setUser(await api.me());
+          toast.success("Teszt fizetés sikeres — az előfizetés 30 napra aktiválva");
+        })
+        .catch(() => toast.error("A fizetés megerősítése nem sikerült"))
+        .finally(() => router.replace("/testpayment"));
+    } else {
+      if (params.get("payment") === "cancelled") {
+        toast.info("A fizetés megszakítva");
+        router.replace("/testpayment");
+      }
+      api.me().then(setUser).catch(() => {});
+    }
   }, [hasHydrated, isAuthenticated, router, setUser, user?.email]);
 
-  async function run(pkg: string, action: "activate" | "expire") {
-    setBusy(`${pkg}:${action}`);
+  // valódi $1 Stripe checkout indítása — átirányít a Stripe oldalára
+  async function startTestPayment(pkg: string) {
+    setBusy(`${pkg}:activate`);
     try {
-      await api.testPayment(pkg, action);
+      const { url } = await api.testCheckout(pkg);
+      window.location.href = url;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Hiba történt");
+      setBusy(null);
+    }
+  }
+
+  async function expire(pkg: string) {
+    setBusy(`${pkg}:expire`);
+    try {
+      await api.testPayment(pkg, "expire");
       setUser(await api.me());
       toast.success(
-        action === "activate"
-          ? `${PACKAGE_LABELS[pkg]} aktiválva 30 napra (teszt)`
-          : `${PACKAGE_LABELS[pkg]} lejáratva — a tartalom mostantól nem látható`
+        `${PACKAGE_LABELS[pkg]} lejáratva — a tartalom mostantól nem látható`
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Hiba történt");
@@ -85,7 +114,7 @@ export default function TestPaymentPage() {
             <div>
               <h1 className="text-2xl font-extrabold">Teszt fizetés</h1>
               <p className="text-white/40 text-sm">
-                Előfizetés aktiválása/lejáratása Whop nélkül — csak teszteléshez
+                Valódi $1-os Stripe fizetés — a teljes előfizetői folyamat tesztelésére
               </p>
             </div>
           </div>
@@ -104,7 +133,8 @@ export default function TestPaymentPage() {
             <>
               <div className="slip-card border-amber-400/20 p-4 text-xs text-amber-200/70 leading-relaxed">
                 ⚠️ Ez az oldal éles üzemben kikapcsolandó (
-                <code>ALLOW_TEST_PAYMENT=false</code>)! Bejelentkezett fiók:{" "}
+                <code>ALLOW_TEST_PAYMENT=false</code>)! A fizetés valódi Stripe
+                tranzakció ($1). Bejelentkezett fiók:{" "}
                 <span className="text-white font-semibold">{user?.email}</span>
               </div>
 
@@ -133,7 +163,7 @@ export default function TestPaymentPage() {
                         </div>
                         <div className="flex gap-2">
                           <button
-                            onClick={() => run(pkg, "activate")}
+                            onClick={() => startTestPayment(pkg)}
                             disabled={busy !== null}
                             className="btn-lime px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 disabled:opacity-50"
                           >
@@ -142,10 +172,10 @@ export default function TestPaymentPage() {
                             ) : (
                               <BadgeCheck size={13} />
                             )}
-                            Aktiválás (30 nap)
+                            Teszt fizetés ($1)
                           </button>
                           <button
-                            onClick={() => run(pkg, "expire")}
+                            onClick={() => expire(pkg)}
                             disabled={busy !== null || !active}
                             className="px-4 py-2.5 rounded-xl text-xs font-bold bg-ink-700 text-white/70 hover:text-white flex items-center gap-1.5 disabled:opacity-40 transition-colors"
                           >

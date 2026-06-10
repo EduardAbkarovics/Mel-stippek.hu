@@ -204,13 +204,12 @@ pub async fn user_subscriptions(col: &Collection<Subscription>, user_id: ObjectI
     Ok(cursor.try_collect().await?)
 }
 
-/// Előfizetés aktiválása/megújítása (Whop webhook hívja).
+/// Előfizetés aktiválása/megújítása (Stripe checkout / webhook hívja).
 pub async fn upsert_subscription(
     col: &Collection<Subscription>,
     user_id: ObjectId,
     package: &str,
-    whop_membership_id: Option<String>,
-    whop_plan_id: Option<String>,
+    stripe_subscription_id: Option<String>,
     expires_at: BsonDateTime,
 ) -> Result<()> {
     let now = BsonDateTime::now();
@@ -218,8 +217,7 @@ pub async fn upsert_subscription(
     let update = doc! {
         "$set": {
             "status": "active",
-            "whop_membership_id": &whop_membership_id,
-            "whop_plan_id": &whop_plan_id,
+            "stripe_subscription_id": &stripe_subscription_id,
             "expires_at": expires_at,
             "updated_at": now,
         },
@@ -231,6 +229,26 @@ pub async fn upsert_subscription(
     let opts = mongodb::options::UpdateOptions::builder().upsert(true).build();
     col.update_one(filter, update, opts).await?;
     Ok(())
+}
+
+/// Előfizetés megújítása Stripe subscription ID alapján (invoice.paid webhook hívja).
+pub async fn renew_subscription_by_stripe_id(
+    col: &Collection<Subscription>,
+    stripe_subscription_id: &str,
+    expires_at: BsonDateTime,
+) -> Result<bool> {
+    let res = col
+        .update_one(
+            doc! { "stripe_subscription_id": stripe_subscription_id },
+            doc! { "$set": {
+                "status": "active",
+                "expires_at": expires_at,
+                "updated_at": BsonDateTime::now(),
+            }},
+            None,
+        )
+        .await?;
+    Ok(res.matched_count > 0)
 }
 
 /// Előfizetés lejáratása user + csomag alapján (teszt fizetéshez).
@@ -253,13 +271,13 @@ pub async fn expire_subscription(
     Ok(res.matched_count > 0)
 }
 
-/// Előfizetés érvénytelenítése (lemondás / sikertelen fizetés).
-pub async fn deactivate_subscription_by_membership(
+/// Előfizetés érvénytelenítése (lemondás / sikertelen fizetés) Stripe subscription ID alapján.
+pub async fn deactivate_subscription_by_stripe_id(
     col: &Collection<Subscription>,
-    whop_membership_id: &str,
+    stripe_subscription_id: &str,
 ) -> Result<()> {
     col.update_one(
-        doc! { "whop_membership_id": whop_membership_id },
+        doc! { "stripe_subscription_id": stripe_subscription_id },
         doc! { "$set": {
             "status": "expired",
             "expires_at": BsonDateTime::now(),
