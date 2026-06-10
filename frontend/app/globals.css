@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  background: #0a0b0d;
+  color: #fff;
+}
+
+::selection {
+  background: #b9f24f;
+  color: #0a0b0d;
+}
+
+/* Vékony, sötét scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #101114;
+}
+::-webkit-scrollbar-thumb {
+  background: #2b3037;
+  border-radius: 4px;
+}
+
+/* Hero háttér: sötét, finom lime fény */
+.hero-bg {
+  background:
+    radial-gradient(ellipse 70% 45% at 50% -5%, rgba(185, 242, 79, 0.13), transparent 65%),
+    radial-gradient(ellipse 45% 35% at 85% 18%, rgba(185, 242, 79, 0.05), transparent 60%),
+    #0a0b0d;
+}
+
+/* Kártya stílus — a proof szelvények kinézete */
+.slip-card {
+  background: #16181c;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+}
+
+.slip-inner {
+  background: #2b3037;
+  border-radius: 12px;
+}
+
+/* Lime CTA gomb */
+.btn-lime {
+  background: #b9f24f;
+  color: #0a0b0d;
+  font-weight: 700;
+  transition: all 0.2s ease;
+}
+.btn-lime:hover {
+  background: #c8f560;
+  box-shadow: 0 0 32px rgba(185, 242, 79, 0.35);
+}
+
+/* Görgető sáv (proof slider) elhalványuló szélekkel */
+.scroll-container {
+  mask: linear-gradient(90deg, transparent 0%, black 8%, black 92%, transparent 100%);
+  -webkit-mask: linear-gradient(90deg, transparent 0%, black 8%, black 92%, transparent 100%);
+}

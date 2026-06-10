@@ -1,0 +1,4 @@
+# A MinGW linker nem bírja az ékezetes elérési utat (Melóstippek.hu),
+# ezért a build kimenet egy ASCII útvonalra megy.
+[build]
+target-dir = "E:/programozas/melostippek-target"
