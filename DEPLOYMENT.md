@@ -80,3 +80,34 @@ TTL maradhat `3600`.
 
 Az NS rekordokhoz ne nyulj, ha a Rackhost DNS zonat hasznalod.
 MX rekordokhoz csak akkor nyulj, ha domaines emailt is beallitasz.
+
+## Teljes futtatas VPS-en
+
+Ha nem Vercelen akarod futtatni a frontendet, hanem a Rackhost Debian VPS-en:
+
+```bash
+cd ~
+git clone git@github.com:EduardAbkarovics/Mel-stippek.hu.git
+cd Mel-stippek.hu
+chmod +x start.sh
+./start.sh
+```
+
+Az elso futas letrehozza a `backend/.env` fajlt, ha meg nincs. Toltsd ki,
+majd futtasd ujra:
+
+```bash
+nano backend/.env
+./start.sh
+```
+
+A script telepiti a szukseges csomagokat, buildeli a frontendet es a Rust
+backendet, systemd service-kent elinditja oket, es nginx alatt a
+`melostippek.hu` domainre koti az oldalt.
+
+VPS-es DNS beallitas Rackhostban:
+
+```txt
+melostippek.hu      A      VPS_IP_CIME
+www                 A      VPS_IP_CIME
+```
