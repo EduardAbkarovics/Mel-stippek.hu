@@ -99,7 +99,7 @@ npm run build
 
 echo "== Backend build =="
 cd "${APP_DIR}/backend"
-cargo build --release
+CARGO_TARGET_DIR="${APP_DIR}/backend/target" cargo build --release
 
 echo "== systemd service-ek letrehozasa =="
 cat > /etc/systemd/system/melostippek-backend.service <<SERVICE
