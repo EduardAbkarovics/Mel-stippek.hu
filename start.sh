@@ -25,6 +25,8 @@ if [ "${MELOSTIPPEK_PULLED:-0}" != "1" ] && [ -d "${APP_DIR}/.git" ]; then
   echo "== Friss kod lehuzasa =="
   cd "${APP_DIR}"
   git config --global --add safe.directory "${DEPLOY_REPO}" >/dev/null 2>&1 || true
+  # a file-transport remote-hoz a .git utvonal is kell a safe.directory-ba
+  git config --global --add safe.directory "${DEPLOY_REPO}/.git" >/dev/null 2>&1 || true
   if [ "${APP_DIR}" != "${DEPLOY_REPO}" ] && [ -d "${DEPLOY_REPO}/.git" ]; then
     git pull "${DEPLOY_REPO}" main || git pull origin main
   else
