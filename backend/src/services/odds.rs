@@ -184,50 +184,59 @@ async fn esport_matches(state: &AppState) -> Result<Value> {
 
     let mut matches: Vec<Value> = vec![];
     for game in ESPORT_GAMES {
-        let url = format!(
-            "https://api.pandascore.co/{game}/matches/upcoming?per_page=25&token={key}"
-        );
-        match state.http.get(&url).send().await {
-            Ok(resp) if resp.status().is_success() => {
-                if let Ok(Value::Array(list)) = resp.json::<Value>().await {
-                    for m in &list {
-                        let opponents = m["opponents"].as_array();
-                        let team = |i: usize| -> String {
-                            opponents
-                                .and_then(|o| o.get(i))
-                                .and_then(|o| o["opponent"]["name"].as_str())
-                                .unwrap_or("TBD")
-                                .to_string()
-                        };
-                        let game_label = match game {
-                            "csgo" => "CS2",
-                            "lol" => "League of Legends",
-                            "dota2" => "Dota 2",
-                            _ => game,
-                        };
-                        matches.push(json!({
-                            "id": m["id"],
-                            "sport_key": game,
-                            "league": format!("{} — {}", game_label, m["league"]["name"].as_str().unwrap_or("")),
-                            "home": team(0),
-                            "away": team(1),
-                            "commence_time": m["begin_at"],
-                            "live": false,
-                            // PandaScore ingyenes csomagban nincs odds — az admin kézzel írja be a popupban
-                            "odds": { "home": null, "draw": null, "away": null, "over": null, "under": null, "total_point": null }
-                        }));
+        // running = épp zajló (élőként jelölve), upcoming = közelgő meccsek
+        for (endpoint, live) in [("running", true), ("upcoming", false)] {
+            let per_page = if live { 10 } else { 25 };
+            let url = format!(
+                "https://api.pandascore.co/{game}/matches/{endpoint}?per_page={per_page}&token={key}"
+            );
+            match state.http.get(&url).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    if let Ok(Value::Array(list)) = resp.json::<Value>().await {
+                        for m in &list {
+                            let opponents = m["opponents"].as_array();
+                            let team = |i: usize| -> String {
+                                opponents
+                                    .and_then(|o| o.get(i))
+                                    .and_then(|o| o["opponent"]["name"].as_str())
+                                    .unwrap_or("TBD")
+                                    .to_string()
+                            };
+                            let game_label = match game {
+                                "csgo" => "CS2",
+                                "lol" => "League of Legends",
+                                "dota2" => "Dota 2",
+                                _ => game,
+                            };
+                            matches.push(json!({
+                                "id": m["id"],
+                                "sport_key": game,
+                                "league": format!("{} — {}", game_label, m["league"]["name"].as_str().unwrap_or("")),
+                                "home": team(0),
+                                "away": team(1),
+                                "commence_time": m["begin_at"],
+                                "live": live,
+                                // PandaScore ingyenes csomagban nincs odds — az admin kézzel írja be a popupban
+                                "odds": { "home": null, "draw": null, "away": null, "over": null, "under": null, "total_point": null }
+                            }));
+                        }
                     }
                 }
+                Ok(resp) => tracing::warn!("PandaScore {game} {endpoint}: {}", resp.status()),
+                Err(e) => tracing::warn!("PandaScore {game} {endpoint}: {e}"),
             }
-            Ok(resp) => tracing::warn!("PandaScore {game}: {}", resp.status()),
-            Err(e) => tracing::warn!("PandaScore {game}: {e}"),
         }
     }
+    // élő meccsek előre, utána kezdési idő szerint
     matches.sort_by(|a, b| {
-        a["commence_time"]
-            .as_str()
-            .unwrap_or("")
-            .cmp(b["commence_time"].as_str().unwrap_or(""))
+        let live_a = a["live"].as_bool().unwrap_or(false);
+        let live_b = b["live"].as_bool().unwrap_or(false);
+        live_b.cmp(&live_a).then(
+            a["commence_time"]
+                .as_str()
+                .unwrap_or("")
+                .cmp(b["commence_time"].as_str().unwrap_or("")),
+        )
     });
     let result = json!({ "matches": matches });
     state.cache_put(cache_key, result.clone());

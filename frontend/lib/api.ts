@@ -122,6 +122,27 @@ export const api = {
       body: JSON.stringify({ result }),
     }),
   adminUsers: () => request<{ users: AdminUser[] }>("/api/admin/users"),
+  // előfizetés kézi hozzárendelése (lejárat: most + days nap)
+  adminGrantSub: (userId: string, pkg: string, days = 30) =>
+    request<{ ok: boolean; expires_at: string }>(
+      `/api/admin/users/${userId}/subscription`,
+      {
+        method: "POST",
+        body: JSON.stringify({ package: pkg, days }),
+      }
+    ),
+  // előfizetés azonnali elvétele
+  adminRevokeSub: (userId: string, pkg: string) =>
+    request<{ ok: boolean }>(
+      `/api/admin/users/${userId}/subscription/${pkg}`,
+      { method: "DELETE" }
+    ),
+  // 3 teszt fiók (csomagonként egy) létrehozása/frissítése — visszaadja a belépési adatokat
+  adminTestAccounts: () =>
+    request<{ accounts: { email: string; password: string; package: string }[] }>(
+      "/api/admin/test-accounts",
+      { method: "POST" }
+    ),
   adminStats: () =>
     request<{
       users: number;
