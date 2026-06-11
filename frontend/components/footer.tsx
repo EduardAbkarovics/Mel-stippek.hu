@@ -74,7 +74,7 @@ export function Footer() {
                 Ingyenes Telegram csoport
               </a>
               <a
-                href="https://discord.gg/QNyvzUGEje"
+                href="https://discord.gg/5UtrVq6EHy"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 hover:text-white transition-colors"

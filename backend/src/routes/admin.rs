@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
-    routing::{delete, get, patch, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use mongodb::bson::{oid::ObjectId, DateTime as BsonDateTime};
@@ -9,8 +9,8 @@ use std::{collections::HashMap, sync::Arc};
 use crate::{
     error::{AppError, AppResult},
     middleware::AdminUser,
-    models::{subscription::PACKAGES, tip::CATEGORIES, PublicSubscription, PublicTip, Tip},
-    services::{mongo as db, odds},
+    models::{subscription::PACKAGES, tip::CATEGORIES, PublicSubscription, PublicTip, Tip, User},
+    services::{discord_bot, mongo as db, odds},
     AppState,
 };
 
@@ -20,6 +20,12 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/admin/tips", get(all_tips).post(create_tip))
         .route("/api/admin/tips/:id", delete(delete_tip).patch(update_tip_result))
         .route("/api/admin/users", get(users))
+        .route("/api/admin/users/:id/subscription", post(grant_subscription))
+        .route(
+            "/api/admin/users/:id/subscription/:package",
+            delete(revoke_subscription),
+        )
+        .route("/api/admin/test-accounts", post(create_test_accounts))
         .route("/api/admin/stats", get(stats))
 }
 
@@ -181,6 +187,142 @@ async fn users(
         .collect();
 
     Ok(Json(serde_json::json!({ "users": list })))
+}
+
+#[derive(serde::Deserialize)]
+struct GrantSubscriptionRequest {
+    /// "foci" | "esport" | "elo"
+    package: String,
+    /// Hány napra szól a hozzáférés (alapértelmezés: 30).
+    days: Option<i64>,
+}
+
+/// Admin kézzel ad előfizetést egy usernek (pl. tesztelés, kompenzáció).
+/// A lejárat MOST + days — meglévő előfizetésnél felülírja.
+async fn grant_subscription(
+    State(state): State<Arc<AppState>>,
+    _admin: AdminUser,
+    Path(id): Path<String>,
+    Json(req): Json<GrantSubscriptionRequest>,
+) -> AppResult<Json<serde_json::Value>> {
+    if !PACKAGES.contains(&req.package.as_str()) {
+        return Err(AppError::BadRequest("Ismeretlen csomag".into()));
+    }
+    let days = req.days.unwrap_or(30).clamp(1, 3650);
+    let oid = ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("Hibás ID".into()))?;
+    let user = db::find_user_by_id(&state.mongo.users, oid)
+        .await
+        .map_err(AppError::Internal)?
+        .ok_or(AppError::NotFound)?;
+
+    let expires = BsonDateTime::from_millis(
+        (chrono::Utc::now() + chrono::Duration::days(days)).timestamp_millis(),
+    );
+    db::activate_subscription(&state.mongo.subscriptions, oid, &req.package, "admin-grant", expires)
+        .await
+        .map_err(AppError::Internal)?;
+    discord_bot::spawn_sync(state.clone(), oid);
+
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "email": user.email,
+        "package": req.package,
+        "expires_at": expires.try_to_rfc3339_string().unwrap_or_default(),
+    })))
+}
+
+/// Admin elveszi az előfizetést (azonnali lejáratás).
+async fn revoke_subscription(
+    State(state): State<Arc<AppState>>,
+    _admin: AdminUser,
+    Path((id, package)): Path<(String, String)>,
+) -> AppResult<Json<serde_json::Value>> {
+    if !PACKAGES.contains(&package.as_str()) {
+        return Err(AppError::BadRequest("Ismeretlen csomag".into()));
+    }
+    let oid = ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("Hibás ID".into()))?;
+    let found = db::expire_subscription(&state.mongo.subscriptions, oid, &package)
+        .await
+        .map_err(AppError::Internal)?;
+    if !found {
+        return Err(AppError::NotFound);
+    }
+    discord_bot::spawn_sync(state.clone(), oid);
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+/// Teszt fiókok: csomagonként egy user, 1 év aktív előfizetéssel. Idempotens —
+/// újrahíváskor a jelszót és a lejáratot frissíti. Belépés: email + TEST_PASSWORD.
+const TEST_PASSWORD: &str = "Teszt1234";
+const TEST_ACCOUNTS: [(&str, &str); 3] = [
+    ("teszt.foci@melostippek.hu", "foci"),
+    ("teszt.esport@melostippek.hu", "esport"),
+    ("teszt.elo@melostippek.hu", "elo"),
+];
+
+async fn create_test_accounts(
+    State(state): State<Arc<AppState>>,
+    _admin: AdminUser,
+) -> AppResult<Json<serde_json::Value>> {
+    let hash = bcrypt::hash(TEST_PASSWORD, 10).map_err(|e| AppError::Internal(e.into()))?;
+    let mut accounts = vec![];
+
+    for (email, package) in TEST_ACCOUNTS {
+        let user = match db::find_user_by_email(&state.mongo.users, email)
+            .await
+            .map_err(AppError::Internal)?
+        {
+            Some(u) => u,
+            None => {
+                let now = BsonDateTime::now();
+                db::create_user(
+                    &state.mongo.users,
+                    User {
+                        id: None,
+                        email: email.to_string(),
+                        password_hash: Some(hash.clone()),
+                        google_id: None,
+                        telegram_id: None,
+                        telegram_username: None,
+                        name: Some(format!("Teszt — {package}")),
+                        avatar_url: None,
+                        discord_id: None,
+                        discord_username: None,
+                        discord_link_state_hash: None,
+                        discord_link_state_expires: None,
+                        reset_token_hash: None,
+                        reset_token_expires: None,
+                        created_at: now,
+                        updated_at: now,
+                    },
+                )
+                .await
+                .map_err(AppError::Internal)?
+            }
+        };
+        let uid = user
+            .id
+            .ok_or_else(|| AppError::Internal(anyhow::anyhow!("Hiányzó user ID")))?;
+
+        db::set_password_hash(&state.mongo.users, uid, &hash)
+            .await
+            .map_err(AppError::Internal)?;
+
+        let expires = BsonDateTime::from_millis(
+            (chrono::Utc::now() + chrono::Duration::days(365)).timestamp_millis(),
+        );
+        db::activate_subscription(&state.mongo.subscriptions, uid, package, "admin-teszt", expires)
+            .await
+            .map_err(AppError::Internal)?;
+
+        accounts.push(serde_json::json!({
+            "email": email,
+            "password": TEST_PASSWORD,
+            "package": package,
+        }));
+    }
+
+    Ok(Json(serde_json::json!({ "accounts": accounts })))
 }
 
 async fn stats(

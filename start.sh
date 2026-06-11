@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Elsődleges domain az ékezet nélküli; az ékezetes melóstippek.hu
+# (punycode: xn--melstippek-ibb.hu) másodlagosként szintén kiszolgált.
 DOMAIN="${DOMAIN:-melostippek.hu}"
 WWW_DOMAIN="${WWW_DOMAIN:-www.${DOMAIN}}"
+EXTRA_DOMAINS="${EXTRA_DOMAINS:-xn--melstippek-ibb.hu www.xn--melstippek-ibb.hu}"
 APP_DIR="${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 BACKEND_PORT="${BACKEND_PORT:-8080}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 SSL_EMAIL="${SSL_EMAIL:-eduardabkarovics1@gmail.com}"
+DEPLOY_REPO="${DEPLOY_REPO:-/home/deploy/Mel-stippek.hu}"
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Ezt rootkent futtasd: su - root, majd ./start.sh"
@@ -16,6 +20,23 @@ fi
 echo "== Melostippek.hu telepites indul =="
 echo "Domain: ${DOMAIN}"
 echo "Mappa: ${APP_DIR}"
+
+# Friss kod lehuzasa, majd a script ujrainditasa az uj verzioval.
+# A MELOSTIPPEK_PULLED flag vedi ki a vegtelen ciklust, az exec pedig azt,
+# hogy a bash a futas kozben modosult scriptet olvasson tovabb.
+if [ "${MELOSTIPPEK_PULLED:-0}" != "1" ] && [ -d "${APP_DIR}/.git" ]; then
+  echo "== Friss kod lehuzasa =="
+  cd "${APP_DIR}"
+  git config --global --add safe.directory "${DEPLOY_REPO}" >/dev/null 2>&1 || true
+  # a file-transport remote-hoz a .git utvonal is kell a safe.directory-ba
+  git config --global --add safe.directory "${DEPLOY_REPO}/.git" >/dev/null 2>&1 || true
+  if [ "${APP_DIR}" != "${DEPLOY_REPO}" ] && [ -d "${DEPLOY_REPO}/.git" ]; then
+    git pull "${DEPLOY_REPO}" main || git pull origin main
+  else
+    git pull origin main
+  fi
+  MELOSTIPPEK_PULLED=1 exec "${APP_DIR}/start.sh"
+fi
 
 apt-get update
 apt-get install -y \
@@ -146,7 +167,7 @@ cat > /etc/nginx/sites-available/melostippek.hu <<NGINX
 server {
     listen 80;
     listen [::]:80;
-    server_name ${DOMAIN} ${WWW_DOMAIN};
+    server_name ${DOMAIN} ${WWW_DOMAIN} ${EXTRA_DOMAINS};
 
     client_max_body_size 10m;
 
@@ -181,15 +202,18 @@ systemctl enable nginx
 systemctl restart nginx
 
 echo "== SSL tanusitvany probalkozas =="
-if certbot --nginx -d "${DOMAIN}" -d "${WWW_DOMAIN}" \
-  --non-interactive --agree-tos -m "${SSL_EMAIL}" --redirect; then
+CERT_ARGS=(-d "${DOMAIN}" -d "${WWW_DOMAIN}")
+for d in ${EXTRA_DOMAINS}; do CERT_ARGS+=(-d "$d"); done
+if certbot --nginx "${CERT_ARGS[@]}" \
+  --non-interactive --agree-tos -m "${SSL_EMAIL}" --redirect --expand; then
   echo "SSL kesz."
 else
   cat <<MSG
-SSL most nem sikerult. Ez altalaban akkor van, ha a DNS meg nem erre a VPS-re mutat.
-Az oldal HTTP-n mar indulhat, SSL-hez futtasd kesobb:
+SSL most nem sikerult minden domainre. Ez altalaban akkor van, ha valamelyik
+domain DNS-e meg nem erre a VPS-re mutat. A mar meglevo tanusitvany ervenyes
+marad, az oldal megy tovabb. SSL-hez futtasd kesobb:
 
-  certbot --nginx -d ${DOMAIN} -d ${WWW_DOMAIN} --agree-tos -m ${SSL_EMAIL} --redirect
+  certbot --nginx ${CERT_ARGS[@]} --agree-tos -m ${SSL_EMAIL} --redirect --expand
 
 MSG
 fi

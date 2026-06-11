@@ -35,6 +35,13 @@ pub struct Config {
     // Discord webhookok (értesítések)
     pub discord_webhook_signup: String,
     pub discord_webhook_visit: String,
+    // Discord fiók-összekapcsolás + rang-szinkron (bot REST API-n át)
+    pub discord_client_id: String,
+    pub discord_client_secret: String,
+    pub discord_bot_token: String,
+    /// Üresen hagyva a bot egyetlen szerverét használjuk (auto-felderítés).
+    pub discord_guild_id: String,
+    pub discord_invite_url: String,
     /// Teszt fizetés engedélyezése (éles üzemben legyen false!)
     pub allow_test_payment: bool,
     pub test_payment_allowed_emails: Vec<String>,
@@ -79,6 +86,12 @@ impl Config {
                 .unwrap_or_else(|_| "https://t.me/+ilO15-pADJ8xNDZk".into()),
             discord_webhook_signup: std::env::var("DISCORD_WEBHOOK_SIGNUP").unwrap_or_default(),
             discord_webhook_visit: std::env::var("DISCORD_WEBHOOK_VISIT").unwrap_or_default(),
+            discord_client_id: std::env::var("DISCORD_CLIENT_ID").unwrap_or_default(),
+            discord_client_secret: std::env::var("DISCORD_CLIENT_SECRET").unwrap_or_default(),
+            discord_bot_token: std::env::var("DISCORD_BOT_TOKEN").unwrap_or_default(),
+            discord_guild_id: std::env::var("DISCORD_GUILD_ID").unwrap_or_default(),
+            discord_invite_url: std::env::var("DISCORD_INVITE_URL")
+                .unwrap_or_else(|_| "https://discord.gg/5UtrVq6EHy".into()),
             allow_test_payment: std::env::var("ALLOW_TEST_PAYMENT")
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
@@ -89,6 +102,13 @@ impl Config {
                 .filter(|s| !s.is_empty())
                 .collect(),
         })
+    }
+
+    /// Discord összekapcsolás + rang-szinkron csak akkor él, ha minden kulcs megvan.
+    pub fn discord_enabled(&self) -> bool {
+        !self.discord_client_id.is_empty()
+            && !self.discord_client_secret.is_empty()
+            && !self.discord_bot_token.is_empty()
     }
 
     pub fn is_admin(&self, email: &str) -> bool {

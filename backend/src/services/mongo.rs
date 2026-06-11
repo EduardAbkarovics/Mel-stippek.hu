@@ -142,6 +142,17 @@ pub async fn upsert_google_user(
     Ok(user)
 }
 
+/// Jelszó felülírása (teszt fiókok frissítéséhez).
+pub async fn set_password_hash(col: &Collection<User>, user_id: ObjectId, hash: &str) -> Result<()> {
+    col.update_one(
+        doc! { "_id": user_id },
+        doc! { "$set": { "password_hash": hash, "updated_at": BsonDateTime::now() } },
+        None,
+    )
+    .await?;
+    Ok(())
+}
+
 pub async fn list_users(col: &Collection<User>) -> Result<Vec<User>> {
     let opts = FindOptions::builder().sort(doc! { "created_at": -1 }).build();
     let cursor = col.find(None, opts).await?;

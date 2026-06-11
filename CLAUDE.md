@@ -23,8 +23,9 @@
 |---|---|
 | `backend/src/routes/auth.rs` | register/login/Google/Telegram/jelszó reset |
 | `backend/src/routes/payments.rs` | SimplePay checkout + IPN + back-confirm + recurring (havi auto-megújítás, ütemező a main.rs-ben) |
-| `backend/src/services/odds.rs` | The Odds API (foci+élő) + PandaScore (e-sport) proxy, 10 perc cache |
+| `backend/src/services/odds.rs` | odds-api.io (foci+élő, max 2 bookmaker: Bet365+TippmixPRO) + PandaScore (e-sport) proxy, 10 perc cache |
 | `backend/src/routes/admin.rs` | naptár, tipp CRUD, userek |
+| `backend/src/routes/discord.rs` + `services/discord_bot.rs` | Discord fiók-link (OAuth) + előfizetés-alapú rang-sync (bot REST, óránkénti sweep a main.rs-ben) |
 | `frontend/app/admin/page.tsx` | admin UI: naptár, odds popup, tipp kezelés |
 | `frontend/components/proof-card.tsx` | bizonyíték szelvények (PROOFS adat) |
 | `backend/.env` | minden kulcs és beállítás |

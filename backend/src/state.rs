@@ -5,6 +5,14 @@ use std::time::Instant;
 use crate::config::Config;
 use crate::services::mongo::MongoDb;
 
+/// Discordról egyszer felderített azonosítók: szerver + csomagonkénti rang id-k.
+#[derive(Debug, Clone)]
+pub struct DiscordIds {
+    pub guild_id: String,
+    /// package ("foci" | "esport" | "elo") → role id
+    pub roles: HashMap<String, String>,
+}
+
 pub struct AppState {
     pub config: Config,
     pub mongo: MongoDb,
@@ -13,6 +21,8 @@ pub struct AppState {
     pub odds_cache: Mutex<HashMap<String, (Instant, serde_json::Value)>>,
     /// Egyszerű per-IP rate limit az auth végpontokra: ip → kérés időbélyegek.
     pub rate_limits: Mutex<HashMap<String, Vec<Instant>>>,
+    /// Lustán felderített Discord guild + rang id-k (get_or_try_init: hibánál újrapróbálja).
+    pub discord_ids: tokio::sync::OnceCell<DiscordIds>,
 }
 
 impl AppState {
