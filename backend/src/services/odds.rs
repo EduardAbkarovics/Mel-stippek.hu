@@ -3,17 +3,29 @@ use serde_json::{json, Value};
 
 use crate::state::AppState;
 
-/// Foci ligák a The Odds API-n, amiket az admin naptár mutat.
-const SOCCER_KEYS: [&str; 8] = [
-    "soccer_epl",
-    "soccer_germany_bundesliga",
-    "soccer_spain_la_liga",
-    "soccer_italy_serie_a",
-    "soccer_france_ligue_one",
-    "soccer_uefa_champs_league",
-    "soccer_uefa_europa_league",
-    "soccer_efl_champ",
+/// Foci ligák az odds-api.io-n (slug, megjelenített név), amiket az admin naptár mutat.
+/// Szezonon kívüli liga üres listát ad vissza — ez nem hiba.
+const SOCCER_LEAGUES: [(&str, &str); 9] = [
+    ("international-fifa-world-cup", "VB 2026"),
+    ("england-premier-league", "Premier League"),
+    ("germany-bundesliga", "Bundesliga"),
+    ("spain-laliga", "La Liga"),
+    ("italy-serie-a", "Serie A"),
+    ("france-ligue-1", "Ligue 1"),
+    ("international-clubs-uefa-champions-league", "Bajnokok Ligája"),
+    ("international-clubs-uefa-europa-league", "Európa-liga"),
+    ("england-championship", "Championship"),
 ];
+
+const ODDS_API_BASE: &str = "https://api.odds-api.io/v3";
+
+/// Free csomagban max 2 bookmaker választható — ezek a fiókhoz vannak rögzítve
+/// (PUT /bookmakers/selected/select, 12 óránként egyszer módosítható).
+const ODDS_BOOKMAKERS: &str = "Bet365,TippmixPRO";
+
+/// Frissítésenként ennyi legközelebbi meccshez kérünk oddsot (10-esével batchelve).
+/// Kvótakeret: 9 liga + 6 odds batch = 15 kérés / frissítés, óránként max 100 fér bele.
+const MAX_ODDS_EVENTS: usize = 60;
 
 /// E-sport videojátékok a PandaScore-on.
 const ESPORT_GAMES: [&str; 3] = ["csgo", "lol", "dota2"];
@@ -36,7 +48,7 @@ async fn soccer_matches(state: &AppState, live_only: bool) -> Result<Value> {
     if key.is_empty() {
         return Ok(json!({
             "matches": [],
-            "error": "ODDS_API_KEY nincs beállítva — szerezz ingyenes kulcsot: https://the-odds-api.com"
+            "error": "ODDS_API_KEY nincs beállítva — szerezz ingyenes kulcsot: https://odds-api.io"
         }));
     }
 
@@ -44,61 +56,96 @@ async fn soccer_matches(state: &AppState, live_only: bool) -> Result<Value> {
     let all = if let Some(cached) = state.cache_get(&cache_key, CACHE_SECS) {
         cached
     } else {
-        let mut events: Vec<Value> = vec![];
-        for sport in SOCCER_KEYS {
+        // 1) meccslista liga szerint (közelgő + élő, alapból 14 napos horizont)
+        let mut events: Vec<(Value, &str)> = vec![];
+        for (slug, label) in SOCCER_LEAGUES {
             let url = format!(
-                "https://api.the-odds-api.com/v4/sports/{sport}/odds/?apiKey={key}&regions=eu&markets=h2h,totals&oddsFormat=decimal"
+                "{ODDS_API_BASE}/events?apiKey={key}&sport=football&league={slug}&status=pending,live&limit=40"
             );
             match state.http.get(&url).send().await {
                 Ok(resp) if resp.status().is_success() => {
                     if let Ok(Value::Array(list)) = resp.json::<Value>().await {
-                        events.extend(list);
+                        events.extend(list.into_iter().map(|e| (e, label)));
                     }
                 }
-                Ok(resp) => {
-                    tracing::warn!("Odds API {sport}: {}", resp.status());
-                }
-                Err(e) => tracing::warn!("Odds API {sport}: {e}"),
+                Ok(resp) => tracing::warn!("Odds API {slug}: {}", resp.status()),
+                Err(e) => tracing::warn!("Odds API {slug}: {e}"),
             }
         }
-        let val = Value::Array(events);
+        events.sort_by(|a, b| {
+            a.0["date"]
+                .as_str()
+                .unwrap_or("")
+                .cmp(b.0["date"].as_str().unwrap_or(""))
+        });
+
+        // 2) odds a legközelebbi meccsekhez, 10-esével (1 multi hívás = 1 kérés a kvótából)
+        let mut odds_by_event: std::collections::HashMap<String, Value> =
+            std::collections::HashMap::new();
+        let ids: Vec<String> = events
+            .iter()
+            .take(MAX_ODDS_EVENTS)
+            .filter_map(|(e, _)| e["id"].as_i64().map(|i| i.to_string()))
+            .collect();
+        for chunk in ids.chunks(10) {
+            let url = format!(
+                "{ODDS_API_BASE}/odds/multi?apiKey={key}&eventIds={}&bookmakers={ODDS_BOOKMAKERS}",
+                chunk.join(",")
+            );
+            match state.http.get(&url).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    if let Ok(Value::Array(list)) = resp.json::<Value>().await {
+                        for ev in list {
+                            if let Some(id) = ev["id"].as_i64() {
+                                odds_by_event.insert(id.to_string(), extract_odds(&ev));
+                            }
+                        }
+                    }
+                }
+                Ok(resp) => tracing::warn!("Odds API odds/multi: {}", resp.status()),
+                Err(e) => tracing::warn!("Odds API odds/multi: {e}"),
+            }
+        }
+
+        let matches: Vec<Value> = events
+            .iter()
+            .map(|(ev, label)| {
+                let id = ev["id"].as_i64().map(|i| i.to_string()).unwrap_or_default();
+                let no_odds = json!({
+                    "home": null, "draw": null, "away": null,
+                    "over": null, "under": null, "total_point": null
+                });
+                json!({
+                    "id": ev["id"],
+                    "sport_key": "foci",
+                    "league": label,
+                    "home": ev["home"],
+                    "away": ev["away"],
+                    "commence_time": ev["date"],
+                    "live": ev["status"].as_str() == Some("live"),
+                    "odds": odds_by_event.get(&id).cloned().unwrap_or(no_odds),
+                })
+            })
+            .collect();
+        let val = Value::Array(matches);
         state.cache_put(cache_key, val.clone());
         val
     };
 
-    let now = chrono::Utc::now();
     let mut matches: Vec<Value> = vec![];
-    if let Value::Array(events) = &all {
-        for ev in events {
-            let commence = ev["commence_time"].as_str().unwrap_or("");
-            let start = chrono::DateTime::parse_from_rfc3339(commence)
-                .map(|d| d.with_timezone(&chrono::Utc))
-                .unwrap_or(now);
-            let live = start <= now;
-            if live_only != live {
-                continue;
+    if let Value::Array(list) = &all {
+        for m in list {
+            if m["live"].as_bool().unwrap_or(false) == live_only {
+                matches.push(m.clone());
             }
-            // élőben max 3 órás meccseket mutatunk
-            if live && now.signed_duration_since(start).num_hours() > 3 {
-                continue;
-            }
-            matches.push(normalize_odds_api_event(ev, live));
         }
     }
-    matches.sort_by(|a, b| {
-        a["commence_time"]
-            .as_str()
-            .unwrap_or("")
-            .cmp(b["commence_time"].as_str().unwrap_or(""))
-    });
     Ok(json!({ "matches": matches }))
 }
 
-fn normalize_odds_api_event(ev: &Value, live: bool) -> Value {
-    let home = ev["home_team"].as_str().unwrap_or("?");
-    let away = ev["away_team"].as_str().unwrap_or("?");
-
-    // első elérhető bookmaker h2h + totals piacai
+/// Odds kinyerése egy /odds/multi eseményből: preferált bookmaker ML (1X2) +
+/// Totals piaca, a 2,5-höz legközelebbi gólvonallal.
+fn extract_odds(ev: &Value) -> Value {
     let mut h2h_home = Value::Null;
     let mut h2h_draw = Value::Null;
     let mut h2h_away = Value::Null;
@@ -106,66 +153,64 @@ fn normalize_odds_api_event(ev: &Value, live: bool) -> Value {
     let mut under = Value::Null;
     let mut total_point = Value::Null;
 
-    if let Some(bookmakers) = ev["bookmakers"].as_array() {
-        for bm in bookmakers {
-            if let Some(markets) = bm["markets"].as_array() {
-                for m in markets {
-                    match m["key"].as_str() {
-                        Some("h2h") if h2h_home.is_null() => {
-                            if let Some(outcomes) = m["outcomes"].as_array() {
-                                for o in outcomes {
-                                    let name = o["name"].as_str().unwrap_or("");
-                                    if name == home {
-                                        h2h_home = o["price"].clone();
-                                    } else if name == away {
-                                        h2h_away = o["price"].clone();
-                                    } else {
-                                        h2h_draw = o["price"].clone();
-                                    }
-                                }
-                            }
-                        }
-                        Some("totals") if over.is_null() => {
-                            if let Some(outcomes) = m["outcomes"].as_array() {
-                                for o in outcomes {
-                                    match o["name"].as_str() {
-                                        Some("Over") => {
-                                            over = o["price"].clone();
-                                            total_point = o["point"].clone();
-                                        }
-                                        Some("Under") => under = o["price"].clone(),
-                                        _ => {}
-                                    }
-                                }
-                            }
-                        }
-                        _ => {}
+    let bookmakers = ev["bookmakers"].as_object();
+    let preferred: Vec<&str> = ODDS_BOOKMAKERS.split(',').collect();
+    let mut names: Vec<&String> = bookmakers.map(|b| b.keys().collect()).unwrap_or_default();
+    names.sort_by_key(|n| preferred.iter().position(|p| p == n).unwrap_or(usize::MAX));
+
+    for name in names {
+        let Some(markets) = bookmakers.and_then(|b| b[name.as_str()].as_array()) else {
+            continue;
+        };
+        for m in markets {
+            match m["name"].as_str() {
+                Some("ML") if h2h_home.is_null() => {
+                    if let Some(o) = m["odds"].as_array().and_then(|a| a.first()) {
+                        h2h_home = parse_odd(&o["home"]);
+                        h2h_draw = parse_odd(&o["draw"]);
+                        h2h_away = parse_odd(&o["away"]);
                     }
                 }
+                Some("Totals") if over.is_null() => {
+                    // a fő (2,5-höz legközelebbi) gólvonalat mutatjuk
+                    let best = m["odds"].as_array().and_then(|lines| {
+                        lines.iter().min_by(|a, b| {
+                            let da = (a["hdp"].as_f64().unwrap_or(99.0) - 2.5).abs();
+                            let db = (b["hdp"].as_f64().unwrap_or(99.0) - 2.5).abs();
+                            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+                        })
+                    });
+                    if let Some(o) = best {
+                        over = parse_odd(&o["over"]);
+                        under = parse_odd(&o["under"]);
+                        total_point = o["hdp"].clone();
+                    }
+                }
+                _ => {}
             }
-            if !h2h_home.is_null() && !over.is_null() {
-                break;
-            }
+        }
+        if !h2h_home.is_null() && !over.is_null() {
+            break;
         }
     }
 
     json!({
-        "id": ev["id"],
-        "sport_key": ev["sport_key"],
-        "league": ev["sport_title"],
-        "home": home,
-        "away": away,
-        "commence_time": ev["commence_time"],
-        "live": live,
-        "odds": {
-            "home": h2h_home,
-            "draw": h2h_draw,
-            "away": h2h_away,
-            "over": over,
-            "under": under,
-            "total_point": total_point,
-        }
+        "home": h2h_home,
+        "draw": h2h_draw,
+        "away": h2h_away,
+        "over": over,
+        "under": under,
+        "total_point": total_point,
     })
+}
+
+/// Az odds-api.io stringként adja az oddsokat ("1.400") — a frontend számot vár.
+fn parse_odd(v: &Value) -> Value {
+    match v {
+        Value::Number(_) => v.clone(),
+        Value::String(s) => s.parse::<f64>().map(|f| json!(f)).unwrap_or(Value::Null),
+        _ => Value::Null,
+    }
 }
 
 async fn esport_matches(state: &AppState) -> Result<Value> {
