@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 import { Navbar } from "@/components/navbar";
 import { api } from "@/lib/api";
+import { playSound } from "@/lib/sounds";
 import { useAuthStore } from "@/lib/store";
 import { PACKAGE_LABELS, cn } from "@/lib/utils";
 
@@ -50,18 +51,38 @@ export default function TestPaymentPage() {
     api.me().then(setUser).catch(() => {});
   }, [hasHydrated, isAuthenticated, router, setUser, user?.email]);
 
-  // Stripe checkout indítása — éles kulccsal ez VALÓDI terhelés!
-  // A sikeres fizetés a /fizetes/siker oldalra tér vissza és aktiválja az előfizetést.
+  // Legolcsóbb ÉLES teszt: 200 Ft egyszeri terhelés → 1 nap hozzáférés.
+  // Visszatérés ide (?paid=1&session_id=…), a confirm aktivál.
   async function startTestPayment(pkg: string) {
     setBusy(`${pkg}:activate`);
     try {
-      const { url } = await api.checkout(pkg);
-      window.location.href = url;
+      const { url } = await api.testPayment(pkg, "cheap");
+      if (url) window.location.href = url;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Hiba történt");
       setBusy(null);
     }
   }
+
+  // fizetés utáni visszatérés: session megerősítése + aktiválás
+  useEffect(() => {
+    const search = window.location.search;
+    if (!search.includes("paid=1") || !search.includes("session_id=")) return;
+    window.history.replaceState(null, "", "/testpayment");
+    api
+      .confirmPayment("?" + search.split("?").pop())
+      .then(async (res) => {
+        if (res.ok) {
+          playSound("success");
+          toast.success("Teszt fizetés sikeres — 1 nap hozzáférés aktiválva! 🎉");
+          setUser(await api.me());
+        }
+      })
+      .catch((err) =>
+        toast.error(err instanceof Error ? err.message : "Megerősítési hiba")
+      );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function expire(pkg: string) {
     setBusy(`${pkg}:expire`);
@@ -116,9 +137,11 @@ export default function TestPaymentPage() {
           ) : (
             <>
               <div className="slip-card border-amber-400/20 p-4 text-xs text-amber-200/70 leading-relaxed">
-                ⚠️ Ez az oldal éles üzemben kikapcsolandó (
-                <code>ALLOW_TEST_PAYMENT=false</code>)! Sandbox módban a fizetés
-                teszt — nincs valós terhelés. Bejelentkezett fiók:{" "}
+                ⚠️ A „200 Ft teszt" gomb VALÓDI 200 Ft-os kártyaterhelés (Stripe
+                éles), cserébe 1 nap hozzáférést ad — a teljes folyamat (fizetés,
+                aktiválás, Discord értesítő) tesztelhető vele. Éles üzemben az
+                oldal kikapcsolandó (<code>ALLOW_TEST_PAYMENT=false</code>).
+                Bejelentkezett fiók:{" "}
                 <span className="text-white font-semibold">{user?.email}</span>
               </div>
 
@@ -156,7 +179,7 @@ export default function TestPaymentPage() {
                             ) : (
                               <BadgeCheck size={13} />
                             )}
-                            Teszt fizetés
+                            200 Ft teszt (1 nap)
                           </button>
                           <button
                             onClick={() => expire(pkg)}

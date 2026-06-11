@@ -81,10 +81,15 @@ async fn activate_from_session(
 
     let customer_id = session["customer"].as_str().unwrap_or("");
     let subscription_id = session["subscription"].as_str().unwrap_or("");
+    let is_test = session["metadata"]["test_payment"].as_str() == Some("true");
 
-    // periódus vége a Stripe-tól; ha nem érhető el, +31 nap
-    let mut expires_ms = (chrono::Utc::now() + chrono::Duration::days(31)).timestamp_millis();
-    if !subscription_id.is_empty() {
+    // teszt fizetés (200 Ft): 1 nap; éles előfizetés: periódus vége a Stripe-tól (tartalék +31 nap)
+    let mut expires_ms = if is_test {
+        (chrono::Utc::now() + chrono::Duration::days(1)).timestamp_millis()
+    } else {
+        (chrono::Utc::now() + chrono::Duration::days(31)).timestamp_millis()
+    };
+    if !is_test && !subscription_id.is_empty() {
         if let Ok(sub) = stripe::get_subscription(&state.http, &state.config, subscription_id).await
         {
             if let Some(end) = sub["current_period_end"].as_i64() {
@@ -173,6 +178,11 @@ async fn stripe_webhook(
                 // Discord értesítő a számlázáshoz — a Stripe-os számlázási adatokkal
                 let details = &session["customer_details"];
                 let label = stripe::package_info(&package).map(|(n, _)| n).unwrap_or("?");
+                let label = if session["metadata"]["test_payment"].as_str() == Some("true") {
+                    format!("⚠️ TESZT — {label} (200 Ft / 1 nap)")
+                } else {
+                    label.to_string()
+                };
                 discord::notify_payment(
                     state.http.clone(),
                     state.config.discord_webhook_payment.clone(),
@@ -181,7 +191,7 @@ async fn stripe_webhook(
                         email: details["email"].as_str().unwrap_or("?").to_string(),
                         name: details["name"].as_str().map(|s| s.to_string()),
                         address: format_address(&details["address"]),
-                        package_label: label.to_string(),
+                        package_label: label,
                         amount_huf: session["amount_total"].as_u64().unwrap_or(0) / 100,
                         paid_at_utc: chrono::Utc::now(),
                         stripe_id: session["id"].as_str().unwrap_or("?").to_string(),
@@ -374,6 +384,20 @@ async fn test_payment(
     }
 
     match req.action.as_str() {
+        // legolcsóbb ÉLES teszt: 200 Ft egyszeri fizetés → 1 nap hozzáférés
+        "cheap" => {
+            let url = stripe::create_test_checkout(
+                &state.http,
+                &state.config,
+                &req.package,
+                &auth.email,
+                &auth.user_id.to_hex(),
+            )
+            .await
+            .map_err(AppError::Internal)?;
+            tracing::info!("TESZT 200 Ft checkout: user={} csomag={}", auth.email, req.package);
+            Ok(Json(json!({ "ok": true, "url": url })))
+        }
         "expire" => {
             let found =
                 db::expire_subscription(&state.mongo.subscriptions, auth.user_id, &req.package)

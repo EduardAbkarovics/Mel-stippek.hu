@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, X, LogOut, User, Shield, TrendingUp } from "lucide-react";
+import { Menu, X, LogOut, User, Shield, TrendingUp, Volume2, VolumeX } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
 import { api } from "@/lib/api";
+import { isMuted, setMuted } from "@/lib/sounds";
 import { cn } from "@/lib/utils";
 
 const NAV_LINKS = [
@@ -16,9 +17,18 @@ const NAV_LINKS = [
 
 export function Navbar() {
   const [open, setOpen] = useState(false);
+  const [muted, setMutedState] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const { isAuthenticated, user, logout } = useAuthStore();
+
+  useEffect(() => setMutedState(isMuted()), []);
+
+  function toggleMute() {
+    const next = !muted;
+    setMuted(next);
+    setMutedState(next);
+  }
 
   async function handleLogout() {
     try {
@@ -106,14 +116,24 @@ export function Navbar() {
             )}
           </div>
 
-          {/* Mobile hamburger */}
-          <button
-            className="md:hidden p-2 text-white/70 hover:text-white"
-            onClick={() => setOpen((o) => !o)}
-            aria-label="Menü"
-          >
-            {open ? <X size={22} /> : <Menu size={22} />}
-          </button>
+          {/* Hangok némítása + mobile hamburger */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={toggleMute}
+              aria-label={muted ? "Hangok bekapcsolása" : "Hangok némítása"}
+              title={muted ? "Hangok bekapcsolása" : "Hangok némítása"}
+              className="p-2 rounded-xl text-white/40 hover:text-white hover:bg-white/5 transition-colors"
+            >
+              {muted ? <VolumeX size={17} /> : <Volume2 size={17} />}
+            </button>
+            <button
+              className="md:hidden p-2 text-white/70 hover:text-white"
+              onClick={() => setOpen((o) => !o)}
+              aria-label="Menü"
+            >
+              {open ? <X size={22} /> : <Menu size={22} />}
+            </button>
+          </div>
         </div>
       </div>
 

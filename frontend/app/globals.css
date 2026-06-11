@@ -148,6 +148,50 @@ html {
   animation: orb-bob 1.4s ease-in-out infinite;
 }
 
+/* ── Üveg (glassmorphism) felületek a chathez ────────────────────────────── */
+.glass-panel {
+  background: linear-gradient(
+    160deg,
+    rgba(28, 31, 36, 0.72),
+    rgba(16, 17, 20, 0.82)
+  );
+  -webkit-backdrop-filter: blur(24px) saturate(1.3);
+  backdrop-filter: blur(24px) saturate(1.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 24px 64px rgba(0, 0, 0, 0.55);
+}
+
+.glass-bubble {
+  background: rgba(43, 48, 55, 0.55);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* Az AI által kiemelt elem: pulzáló lime ring + üveg csillanás */
+@keyframes ai-glow-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 3px rgba(185, 242, 79, 0.55),
+      0 0 36px rgba(185, 242, 79, 0.3);
+  }
+  50% {
+    box-shadow:
+      0 0 0 6px rgba(185, 242, 79, 0.25),
+      0 0 64px rgba(185, 242, 79, 0.5);
+  }
+}
+
+.ai-glow {
+  animation: ai-glow-pulse 0.9s ease-in-out 3;
+  border-radius: 16px;
+  transition: box-shadow 0.3s ease;
+}
+
 /* Gépelésjelző pöttyök */
 @keyframes ai-dot {
   0%,

@@ -104,9 +104,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ messages }),
     }),
-  // teszt segéd: előfizetés azonnali lejáratása
-  testPayment: (pkg: string, action: "expire") =>
-    request<{ ok: boolean; status: string }>("/api/payments/test", {
+  // teszt segéd: "cheap" = 200 Ft-os éles fizetés (1 nap hozzáférés, url-t ad),
+  // "expire" = előfizetés azonnali lejáratása
+  testPayment: (pkg: string, action: "expire" | "cheap") =>
+    request<{ ok: boolean; status?: string; url?: string }>("/api/payments/test", {
       method: "POST",
       body: JSON.stringify({ package: pkg, action }),
     }),

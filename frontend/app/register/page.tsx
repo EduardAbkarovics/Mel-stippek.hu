@@ -10,6 +10,7 @@ import { Navbar } from "@/components/navbar";
 import { GoogleButton } from "@/components/google-button";
 import { TelegramLogin } from "@/components/telegram-login";
 import { api } from "@/lib/api";
+import { playSound } from "@/lib/sounds";
 import { useAuthStore } from "@/lib/store";
 
 export default function RegisterPage() {
@@ -31,6 +32,7 @@ export default function RegisterPage() {
     try {
       const { token, user } = await api.register(email, password, name || undefined);
       setAuth(token, user);
+      playSound("success");
       toast.success("Sikeres regisztráció!");
       router.push("/#csomagok");
     } catch (err) {

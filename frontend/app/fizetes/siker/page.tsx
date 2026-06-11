@@ -5,6 +5,7 @@ import Link from "next/link";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { api } from "@/lib/api";
+import { playSound } from "@/lib/sounds";
 import { useAuthStore } from "@/lib/store";
 
 /* Stripe fizetés utáni visszatérési oldal. A ?session_id=… alapján azonnal
@@ -25,7 +26,10 @@ export default function PaymentSuccessPage() {
         .then(async () => {
           const user = await api.me();
           setUser(user);
-          if (user.packages.length > 0) setActivated(true);
+          if (user.packages.length > 0) {
+            setActivated(true);
+            playSound("success");
+          }
         })
         .catch(() => {});
     }

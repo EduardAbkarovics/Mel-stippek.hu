@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BadgeCheck,
@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { playSound } from "@/lib/sounds";
 import { cn } from "@/lib/utils";
 
 export interface CheckoutPlan {
@@ -37,6 +38,11 @@ export function CheckoutModal({
   onClose: () => void;
 }) {
   const [loading, setLoading] = useState(false);
+
+  // üveg-koppanás a panel nyitásakor
+  useEffect(() => {
+    if (plan) playSound("open");
+  }, [plan]);
 
   async function pay() {
     if (!plan || loading) return;

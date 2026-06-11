@@ -93,6 +93,48 @@ pub async fn create_subscription_checkout(
         .ok_or_else(|| anyhow!("Nincs URL a Stripe válaszban"))
 }
 
+/// Legolcsóbb éles teszt fizetés: egyszeri 200 Ft, sikeres fizetés után a
+/// confirm/webhook 1 napra aktiválja a csomagot (metadata[test_payment]=true).
+pub async fn create_test_checkout(
+    http: &reqwest::Client,
+    config: &Config,
+    package: &str,
+    email: &str,
+    user_hex: &str,
+) -> Result<String> {
+    let (name, _) = package_info(package).ok_or_else(|| anyhow!("Ismeretlen csomag"))?;
+    let frontend = &config.frontend_url;
+
+    let params: Vec<(&str, String)> = vec![
+        ("mode", "payment".into()),
+        ("locale", "hu".into()),
+        ("payment_method_types[]", "card".into()),
+        ("line_items[0][price_data][currency]", "huf".into()),
+        (
+            "line_items[0][price_data][product_data][name]",
+            format!("Melóstippek.hu — TESZT: {name} (1 nap)"),
+        ),
+        // 200 Ft = 20 000 fillér (Stripe HUF minimum ~175 Ft felett)
+        ("line_items[0][price_data][unit_amount]", "20000".into()),
+        ("line_items[0][quantity]", "1".into()),
+        ("client_reference_id", user_hex.to_string()),
+        ("customer_email", email.to_string()),
+        ("metadata[package]", package.to_string()),
+        ("metadata[test_payment]", "true".into()),
+        (
+            "success_url",
+            format!("{frontend}/testpayment?paid=1&session_id={{CHECKOUT_SESSION_ID}}"),
+        ),
+        ("cancel_url", format!("{frontend}/testpayment")),
+    ];
+
+    let data = stripe_post(http, config, "https://api.stripe.com/v1/checkout/sessions", &params).await?;
+    data["url"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| anyhow!("Nincs URL a Stripe válaszban"))
+}
+
 pub async fn get_checkout_session(
     http: &reqwest::Client,
     config: &Config,
