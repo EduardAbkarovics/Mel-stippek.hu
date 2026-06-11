@@ -54,6 +54,18 @@ async fn main() -> anyhow::Result<()> {
         rate_limits: std::sync::Mutex::new(std::collections::HashMap::new()),
     });
 
+    // SimplePay havi automatikus megújítás ütemezője (12 óránként ellenőriz).
+    {
+        let state = state.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            loop {
+                routes::payments::process_recurring_renewals(state.as_ref()).await;
+                tokio::time::sleep(std::time::Duration::from_secs(12 * 3600)).await;
+            }
+        });
+    }
+
     let app = Router::new()
         .route("/api/health", get(|| async { "ok" }))
         .merge(routes::auth::router())

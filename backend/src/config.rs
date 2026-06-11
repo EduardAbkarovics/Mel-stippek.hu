@@ -12,9 +12,11 @@ pub struct Config {
     pub google_client_secret: String,
     /// Admin emailek env-ből (ADMIN_EMAILS, vesszővel elválasztva) — nem hardcode-olt.
     pub admin_emails: Vec<String>,
-    // Stripe
-    pub stripe_secret_key: String,
-    pub stripe_webhook_secret: String,
+    // SimplePay (OTP)
+    pub simplepay_merchant: String,
+    pub simplepay_secret_key: String,
+    /// Sandbox (teszt) környezet használata. Élesben false.
+    pub simplepay_sandbox: bool,
     // Odds API-k (proxy-zva, kulcs nem kerül ki a frontendre)
     pub odds_api_key: String,
     pub pandascore_api_key: String,
@@ -56,8 +58,11 @@ impl Config {
                 .map(|s| s.trim().to_lowercase())
                 .filter(|s| !s.is_empty())
                 .collect(),
-            stripe_secret_key: std::env::var("STRIPE_SECRET_KEY").unwrap_or_default(),
-            stripe_webhook_secret: std::env::var("STRIPE_WEBHOOK_SECRET").unwrap_or_default(),
+            simplepay_merchant: std::env::var("SIMPLEPAY_MERCHANT").unwrap_or_default(),
+            simplepay_secret_key: std::env::var("SIMPLEPAY_SECRET_KEY").unwrap_or_default(),
+            simplepay_sandbox: std::env::var("SIMPLEPAY_SANDBOX")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(true),
             odds_api_key: std::env::var("ODDS_API_KEY").unwrap_or_default(),
             pandascore_api_key: std::env::var("PANDASCORE_API_KEY").unwrap_or_default(),
             smtp_host: std::env::var("SMTP_HOST").unwrap_or_else(|_| "smtp.gmail.com".into()),

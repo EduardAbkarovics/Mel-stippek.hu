@@ -22,7 +22,7 @@ const TEST_PAYMENT_ALLOWED_EMAILS = new Set([
   "fuckcursorsubcription1234@freemail.hu",
 ]);
 
-/* Teszt fizetés oldal — valódi Stripe $1 fizetéssel aktiválható az előfizetés,
+/* Teszt fizetés oldal — SimplePay (sandbox) fizetéssel aktiválható az előfizetés,
    illetve lejáratható, hogy a teljes előfizetői folyamat tesztelhető legyen.
    Csak akkor működik, ha a backenden ALLOW_TEST_PAYMENT=true. */
 export default function TestPaymentPage() {
@@ -46,32 +46,15 @@ export default function TestPaymentPage() {
       .then((c) => setEnabled(c.test_payment_enabled))
       .catch(() => setEnabled(false));
 
-    // Stripe-tól visszatérés: a fizetést megerősítjük és aktiváljuk az előfizetést
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("payment") === "success" && params.get("session_id")) {
-      const sessionId = params.get("session_id")!;
-      api
-        .confirmPayment(sessionId)
-        .then(async () => {
-          setUser(await api.me());
-          toast.success("Teszt fizetés sikeres — az előfizetés 30 napra aktiválva");
-        })
-        .catch(() => toast.error("A fizetés megerősítése nem sikerült"))
-        .finally(() => router.replace("/testpayment"));
-    } else {
-      if (params.get("payment") === "cancelled") {
-        toast.info("A fizetés megszakítva");
-        router.replace("/testpayment");
-      }
-      api.me().then(setUser).catch(() => {});
-    }
+    api.me().then(setUser).catch(() => {});
   }, [hasHydrated, isAuthenticated, router, setUser, user?.email]);
 
-  // valódi $1 Stripe checkout indítása — átirányít a Stripe oldalára
+  // SimplePay checkout indítása (sandbox módban valódi terhelés nélkül tesztelhető).
+  // A sikeres fizetés a /fizetes/siker oldalra tér vissza és aktiválja az előfizetést.
   async function startTestPayment(pkg: string) {
     setBusy(`${pkg}:activate`);
     try {
-      const { url } = await api.testCheckout(pkg);
+      const { url } = await api.checkout(pkg);
       window.location.href = url;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Hiba történt");
@@ -114,7 +97,7 @@ export default function TestPaymentPage() {
             <div>
               <h1 className="text-2xl font-extrabold">Teszt fizetés</h1>
               <p className="text-white/40 text-sm">
-                Valódi $1-os Stripe fizetés — a teljes előfizetői folyamat tesztelésére
+                SimplePay sandbox fizetés — a teljes előfizetői folyamat tesztelésére
               </p>
             </div>
           </div>
@@ -133,8 +116,8 @@ export default function TestPaymentPage() {
             <>
               <div className="slip-card border-amber-400/20 p-4 text-xs text-amber-200/70 leading-relaxed">
                 ⚠️ Ez az oldal éles üzemben kikapcsolandó (
-                <code>ALLOW_TEST_PAYMENT=false</code>)! A fizetés valódi Stripe
-                tranzakció ($1). Bejelentkezett fiók:{" "}
+                <code>ALLOW_TEST_PAYMENT=false</code>)! Sandbox módban a fizetés
+                teszt — nincs valós terhelés. Bejelentkezett fiók:{" "}
                 <span className="text-white font-semibold">{user?.email}</span>
               </div>
 
@@ -172,7 +155,7 @@ export default function TestPaymentPage() {
                             ) : (
                               <BadgeCheck size={13} />
                             )}
-                            Teszt fizetés ($1)
+                            Teszt fizetés
                           </button>
                           <button
                             onClick={() => expire(pkg)}

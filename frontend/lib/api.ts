@@ -66,27 +66,28 @@ export const api = {
       telegram_group_url: string;
       telegram_bot_username: string;
       google_login_enabled: boolean;
-      stripe_enabled: boolean;
+      simplepay_enabled: boolean;
       test_payment_enabled: boolean;
     }>("/api/config"),
   myTips: () =>
     request<{ packages: string[]; tips: Tip[] }>("/api/tips"),
+  // SimplePay recurring checkout — visszaadja a fizetési URL-t
   checkout: (pkg: string) =>
     request<{ url: string }>("/api/payments/checkout", {
       method: "POST",
       body: JSON.stringify({ package: pkg }),
     }),
-  // 1 USD-s teszt Stripe checkout — visszaadja a fizetési URL-t
-  testCheckout: (pkg: string) =>
-    request<{ url: string }>("/api/payments/test-checkout", {
+  // SimplePay-ről visszatérés után: a `r`+`s` query paramokkal megerősíti/aktiválja
+  confirmPayment: (search: string) =>
+    request<{ ok: boolean; status: string; package?: string }>(
+      `/api/payments/confirm${search}`
+    ),
+  // automatikus megújítás lemondása (hozzáférés a lejáratig megmarad)
+  cancelSubscription: (pkg: string) =>
+    request<{ ok: boolean }>("/api/payments/cancel", {
       method: "POST",
       body: JSON.stringify({ package: pkg }),
     }),
-  // Stripe-tól visszatérés után: aktiválja az előfizetést a session alapján
-  confirmPayment: (sessionId: string) =>
-    request<{ ok: boolean; status: string }>(
-      `/api/payments/confirm?session_id=${encodeURIComponent(sessionId)}`
-    ),
   // teszt segéd: előfizetés azonnali lejáratása
   testPayment: (pkg: string, action: "expire") =>
     request<{ ok: boolean; status: string }>("/api/payments/test", {

@@ -16,6 +16,7 @@ export default function ProfilPage() {
   const router = useRouter();
   const { isAuthenticated, user, setUser, hasHydrated } = useAuthStore();
   const [loading, setLoading] = useState(true);
+  const [canceling, setCanceling] = useState<string | null>(null);
 
   useEffect(() => {
     if (!hasHydrated) return;
@@ -34,6 +35,26 @@ export default function ProfilPage() {
     try {
       setUser(await api.me());
     } catch {}
+  }
+
+  async function cancelRenew(pkg: string) {
+    if (
+      !window.confirm(
+        "Biztosan lemondod az automatikus megújítást? A hozzáférés a jelenlegi időszak végéig megmarad."
+      )
+    )
+      return;
+    setCanceling(pkg);
+    try {
+      await api.cancelSubscription(pkg);
+      toast.success(
+        "Automatikus megújítás lemondva — a hozzáférés a lejáratig megmarad"
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Hiba történt");
+    } finally {
+      setCanceling(null);
+    }
   }
 
   async function unlinkTelegram() {
@@ -93,15 +114,24 @@ export default function ProfilPage() {
                 {user.packages.map((p) => (
                   <div
                     key={p}
-                    className="flex items-center justify-between slip-inner px-4 py-3"
+                    className="flex items-center justify-between slip-inner px-4 py-3 gap-3"
                   >
                     <span className="text-sm font-semibold">
                       {PACKAGE_LABELS[p] || p}
                     </span>
-                    <span className="flex items-center gap-1.5 text-lime text-xs font-bold">
-                      <BadgeCheck size={14} />
-                      AKTÍV
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="flex items-center gap-1.5 text-lime text-xs font-bold">
+                        <BadgeCheck size={14} />
+                        AKTÍV
+                      </span>
+                      <button
+                        onClick={() => cancelRenew(p)}
+                        disabled={canceling !== null}
+                        className="text-xs text-white/40 hover:text-red-400 transition-colors disabled:opacity-50 whitespace-nowrap"
+                      >
+                        {canceling === p ? "…" : "Megújítás lemondása"}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

@@ -11,11 +11,20 @@ pub struct Subscription {
     pub user_id: ObjectId,
     /// "foci" | "esport" | "elo"
     pub package: String,
-    /// "active" | "cancelled" | "expired"
+    /// "active" | "pending" | "cancelled" | "expired"
     pub status: String,
-    /// Stripe subscription ID (egyszeri teszt fizetésnél None).
+    /// SimplePay utolsó orderRef (azonosításhoz).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub stripe_subscription_id: Option<String>,
+    pub simplepay_order_ref: Option<String>,
+    /// Recurring tokenek a havi automatikus terheléshez (tokenenként egy levonás).
+    #[serde(default)]
+    pub simplepay_tokens: Vec<String>,
+    /// A tokenek érvényességi határa (recurring.until).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_until: Option<BsonDateTime>,
+    /// Automatikus megújítás bekapcsolva (lemondáskor false).
+    #[serde(default)]
+    pub auto_renew: bool,
     pub started_at: BsonDateTime,
     /// Lejárat — ha elmúlt, a user NEM fér hozzá a tartalomhoz.
     pub expires_at: BsonDateTime,

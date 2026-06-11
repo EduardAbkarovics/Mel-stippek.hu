@@ -7,9 +7,9 @@ import { Navbar } from "@/components/navbar";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 
-/* Stripe fizetés utáni visszatérési oldal. A session_id alapján azonnal megerősítjük
-   a fizetést (webhook nélkül is működik), illetve a webhook is aktiválhatja — addig
-   frissítgetjük a usert. */
+/* SimplePay fizetés utáni visszatérési oldal. A `r`+`s` query paramok alapján azonnal
+   megerősítjük a fizetést (az IPN-től függetlenül is működik), illetve az IPN is
+   aktiválhatja — addig frissítgetjük a usert. */
 export default function PaymentSuccessPage() {
   const { setUser, isAuthenticated } = useAuthStore();
   const [activated, setActivated] = useState(false);
@@ -17,11 +17,11 @@ export default function PaymentSuccessPage() {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    // azonnali megerősítés a Stripe session alapján
-    const sessionId = new URLSearchParams(window.location.search).get("session_id");
-    if (sessionId) {
+    // azonnali megerősítés a SimplePay back-redirect (r,s) alapján
+    const search = window.location.search;
+    if (search.includes("r=")) {
       api
-        .confirmPayment(sessionId)
+        .confirmPayment(search)
         .then(async () => {
           const user = await api.me();
           setUser(user);
@@ -30,7 +30,7 @@ export default function PaymentSuccessPage() {
         .catch(() => {});
     }
 
-    // tartalék: a webhook is aktiválhat, ezért pollozunk is
+    // tartalék: az IPN is aktiválhat, ezért pollozunk is
     let tries = 0;
     const interval = setInterval(async () => {
       tries++;

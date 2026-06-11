@@ -204,24 +204,29 @@ pub async fn user_subscriptions(col: &Collection<Subscription>, user_id: ObjectI
     Ok(cursor.try_collect().await?)
 }
 
-/// Előfizetés aktiválása/megújítása (Stripe checkout / webhook hívja).
-pub async fn upsert_subscription(
+/// Recurring tokenek + orderRef eltárolása a SimplePay /start után (még fizetés előtt).
+/// Meglévő előfizetésnél csak frissíti a tokeneket; újnál "pending" státuszú lesz.
+pub async fn store_recurring_tokens(
     col: &Collection<Subscription>,
     user_id: ObjectId,
     package: &str,
-    stripe_subscription_id: Option<String>,
-    expires_at: BsonDateTime,
+    order_ref: &str,
+    tokens: &[String],
+    token_until: BsonDateTime,
 ) -> Result<()> {
     let now = BsonDateTime::now();
     let filter = doc! { "user_id": user_id, "package": package };
     let update = doc! {
         "$set": {
-            "status": "active",
-            "stripe_subscription_id": &stripe_subscription_id,
-            "expires_at": expires_at,
+            "simplepay_order_ref": order_ref,
+            "simplepay_tokens": tokens.to_vec(),
+            "token_until": token_until,
+            "auto_renew": true,
             "updated_at": now,
         },
         "$setOnInsert": {
+            "status": "pending",
+            "expires_at": now,
             "started_at": now,
             "created_at": now,
         }
@@ -231,20 +236,88 @@ pub async fn upsert_subscription(
     Ok(())
 }
 
-/// Előfizetés megújítása Stripe subscription ID alapján (invoice.paid webhook hívja).
-pub async fn renew_subscription_by_stripe_id(
+/// Előfizetés aktiválása sikeres fizetés után (IPN / back-confirm). Idempotens.
+pub async fn activate_subscription(
     col: &Collection<Subscription>,
-    stripe_subscription_id: &str,
+    user_id: ObjectId,
+    package: &str,
+    order_ref: &str,
     expires_at: BsonDateTime,
+) -> Result<()> {
+    let now = BsonDateTime::now();
+    let filter = doc! { "user_id": user_id, "package": package };
+    let update = doc! {
+        "$set": {
+            "status": "active",
+            "simplepay_order_ref": order_ref,
+            "expires_at": expires_at,
+            "updated_at": now,
+        },
+        "$setOnInsert": {
+            "auto_renew": true,
+            "simplepay_tokens": Vec::<String>::new(),
+            "started_at": now,
+            "created_at": now,
+        }
+    };
+    let opts = mongodb::options::UpdateOptions::builder().upsert(true).build();
+    col.update_one(filter, update, opts).await?;
+    Ok(())
+}
+
+/// Hamarosan lejáró, automatikusan megújítható előfizetések (van még tokenjük, a token érvényes).
+pub async fn find_renewable_subscriptions(
+    col: &Collection<Subscription>,
+    expiring_before: BsonDateTime,
+) -> Result<Vec<Subscription>> {
+    let now = BsonDateTime::now();
+    let filter = doc! {
+        "status": "active",
+        "auto_renew": true,
+        "expires_at": { "$lte": expiring_before },
+        "token_until": { "$gt": now },
+        "simplepay_tokens.0": { "$exists": true },
+    };
+    let cursor = col.find(filter, None).await?;
+    Ok(cursor.try_collect().await?)
+}
+
+/// Sikeres havi terhelés után: a felhasznált token eltávolítása + lejárat meghosszabbítása.
+pub async fn renew_with_token(
+    col: &Collection<Subscription>,
+    sub_id: ObjectId,
+    used_token: &str,
+    order_ref: &str,
+    expires_at: BsonDateTime,
+) -> Result<()> {
+    col.update_one(
+        doc! { "_id": sub_id },
+        doc! {
+            "$set": {
+                "status": "active",
+                "expires_at": expires_at,
+                "simplepay_order_ref": order_ref,
+                "updated_at": BsonDateTime::now(),
+            },
+            "$pull": { "simplepay_tokens": used_token },
+        },
+        None,
+    )
+    .await?;
+    Ok(())
+}
+
+/// Automatikus megújítás be/ki (lemondás: a meglévő hozzáférés a lejáratig megmarad).
+pub async fn set_auto_renew(
+    col: &Collection<Subscription>,
+    user_id: ObjectId,
+    package: &str,
+    enabled: bool,
 ) -> Result<bool> {
     let res = col
         .update_one(
-            doc! { "stripe_subscription_id": stripe_subscription_id },
-            doc! { "$set": {
-                "status": "active",
-                "expires_at": expires_at,
-                "updated_at": BsonDateTime::now(),
-            }},
+            doc! { "user_id": user_id, "package": package },
+            doc! { "$set": { "auto_renew": enabled, "updated_at": BsonDateTime::now() } },
             None,
         )
         .await?;
@@ -263,30 +336,13 @@ pub async fn expire_subscription(
             doc! { "$set": {
                 "status": "expired",
                 "expires_at": BsonDateTime::now(),
+                "auto_renew": false,
                 "updated_at": BsonDateTime::now(),
             }},
             None,
         )
         .await?;
     Ok(res.matched_count > 0)
-}
-
-/// Előfizetés érvénytelenítése (lemondás / sikertelen fizetés) Stripe subscription ID alapján.
-pub async fn deactivate_subscription_by_stripe_id(
-    col: &Collection<Subscription>,
-    stripe_subscription_id: &str,
-) -> Result<()> {
-    col.update_one(
-        doc! { "stripe_subscription_id": stripe_subscription_id },
-        doc! { "$set": {
-            "status": "expired",
-            "expires_at": BsonDateTime::now(),
-            "updated_at": BsonDateTime::now(),
-        }},
-        None,
-    )
-    .await?;
-    Ok(())
 }
 
 pub async fn list_subscriptions(col: &Collection<Subscription>) -> Result<Vec<Subscription>> {

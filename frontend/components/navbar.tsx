@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, X, Trophy, LogOut, User, Shield } from "lucide-react";
+import { Menu, X, LogOut, User, Shield } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -33,13 +33,12 @@ export function Navbar() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="w-9 h-9 rounded-xl bg-lime flex items-center justify-center">
-              <Trophy size={18} className="text-ink-950" />
-            </div>
-            <span className="font-bold text-lg tracking-tight">
-              Melóstippek<span className="text-lime">.hu</span>
-            </span>
+          <Link href="/" className="flex items-center group" aria-label="Melóstippek.hu">
+            <img
+              src="/logo.png"
+              alt="Melóstippek.hu"
+              className="h-9 sm:h-10 w-auto rounded-md"
+            />
           </Link>
 
           {/* Desktop links */}

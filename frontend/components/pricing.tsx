@@ -25,8 +25,8 @@ const PLANS: Plan[] = [
     id: "foci",
     name: "Foci csomag",
     icon: <Zap size={20} />,
-    price: 30,
-    oldPrice: 60,
+    price: 9990,
+    oldPrice: 19990,
     badge: "AKCIÓ -50%",
     description: "A WB foci csoport — a legnépszerűbb csomagunk.",
     features: [
@@ -41,7 +41,7 @@ const PLANS: Plan[] = [
     id: "esport",
     name: "E-sport csomag",
     icon: <Gamepad2 size={20} />,
-    price: 25,
+    price: 7990,
     description: "CS2, League of Legends és Dota 2 tippek.",
     features: [
       "Napi e-sport tippek a legnagyobb meccsekre",
@@ -53,7 +53,7 @@ const PLANS: Plan[] = [
     id: "elo",
     name: "Élő tippek",
     icon: <Radio size={20} />,
-    price: 30,
+    price: 9990,
     description: "Csak élő, meccs közbeni tippek — azonnali értesítéssel.",
     features: [
       "Élő tippek meccs közben",
@@ -116,10 +116,12 @@ export function Pricing() {
           <div className="flex items-baseline gap-2 mb-1">
             {plan.oldPrice && (
               <span className="text-white/30 line-through text-xl font-semibold">
-                ${plan.oldPrice}
+                {plan.oldPrice.toLocaleString("hu-HU")} Ft
               </span>
             )}
-            <span className="text-4xl font-extrabold">${plan.price}</span>
+            <span className="text-3xl sm:text-4xl font-extrabold">
+              {plan.price.toLocaleString("hu-HU")} Ft
+            </span>
             <span className="text-white/40 text-sm">/ hó</span>
           </div>
           <p className="text-white/50 text-sm mb-5">{plan.description}</p>

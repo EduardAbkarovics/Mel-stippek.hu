@@ -73,8 +73,8 @@ Toltsd ki ezt a fajlt eles kulcsokkal:
 
 Legalabb ezek kellenek:
   MONGODB_URL
-  STRIPE_SECRET_KEY
-  STRIPE_WEBHOOK_SECRET
+  SIMPLEPAY_MERCHANT
+  SIMPLEPAY_SECRET_KEY
 
 Utana futtasd ujra:
   cd ${APP_DIR}

@@ -6,7 +6,7 @@ Előfizetés-alapú tippmix oldal — foci, e-sport és élő fogadási tippek m
 
 - **Backend:** Rust (Axum) + MongoDB Atlas — port `8080`
 - **Frontend:** Next.js 15 + TypeScript + Tailwind (shadcn struktúra) — port `3000`
-- **Fizetés:** Stripe Checkout (3 havi előfizetéses csomag)
+- **Fizetés:** SimplePay (OTP) — havi ismétlődő előfizetés (recurring token), HUF
 - **Login:** Email+jelszó, Google OAuth, Telegram widget — sessionök MongoDB-ben
 
 ## Indítás
@@ -33,9 +33,9 @@ vagy egyben: `start.bat`
 
 | Csomag | Ár | Tartalom |
 |---|---|---|
-| Foci (WB csoport) | **$30** ~~$60~~ | napi 2-5 foci tipp |
-| E-sport | **$25** | CS2 / LoL / Dota 2 tippek |
-| Élő tippek | **$30** | csak élő, meccs közbeni tippek |
+| Foci (WB csoport) | **9 990 Ft** ~~19 990 Ft~~ | napi 2-5 foci tipp |
+| E-sport | **7 990 Ft** | CS2 / LoL / Dota 2 tippek |
+| Élő tippek | **9 990 Ft** | csak élő, meccs közbeni tippek |
 
 Alkategóriák (minden csomagban): **Over/Under**, **Win**, **Light** fogadások.
 A lejárt előfizetés automatikusan elveszti a hozzáférést (a backend minden
@@ -47,8 +47,9 @@ A rendszer ezek nélkül is fut, de a hozzájuk tartozó funkció inaktív:
 
 | Kulcs | Mihez kell | Honnan |
 |---|---|---|
-| `STRIPE_SECRET_KEY` | fizetés | Stripe Dashboard → Developers → API keys (`sk_live_` / teszthez `sk_test_`) |
-| `STRIPE_WEBHOOK_SECRET` | webhook aláírás ellenőrzés | Stripe Dashboard → Developers → Webhooks (URL: `https://<backend>/api/webhooks/stripe`) |
+| `SIMPLEPAY_MERCHANT` | fizetés | SimplePay kereskedői fiók (sandbox: `PUBLICTESTHUF`) |
+| `SIMPLEPAY_SECRET_KEY` | aláírás (HMAC-SHA384) | SimplePay fiók (sandbox: `FxDa5w314kLlNseq2sKuVwaqZshZT5d6`) |
+| `SIMPLEPAY_SANDBOX` | teszt/éles kapcsoló | `true` = sandbox (nincs valós terhelés), élesben `false`. IPN URL: `https://<backend>/api/payments/ipn` |
 | `ODDS_API_KEY` | foci + élő meccsnaptár az adminban | the-odds-api.com (ingyenes: 500 kérés/hó) |
 | `PANDASCORE_API_KEY` | e-sport meccsnaptár | pandascore.co (ingyenes) |
 | `SMTP_PASS` | jelszó reset email Gmailen át | Google fiók → Biztonság → Alkalmazásjelszavak |
