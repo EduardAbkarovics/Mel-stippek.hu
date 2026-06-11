@@ -21,3 +21,6 @@ dist/
 
 *.log
 *.tsbuildinfo
+
+# Promó videók — nagy média fájlok nem mennek a repóba
+*.mp4

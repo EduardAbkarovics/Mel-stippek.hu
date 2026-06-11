@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Poppins, Press_Start_2P } from "next/font/google";
 import { Toaster } from "sonner";
+import { AskAi } from "@/components/ask-ai";
 import { VisitTracker } from "@/components/visit-tracker";
 import "./globals.css";
 
@@ -29,6 +30,7 @@ export default function RootLayout({
     <html lang="hu">
       <body className={`${poppins.variable} ${pixel.variable} font-sans antialiased`}>
         {children}
+        <AskAi />
         <VisitTracker />
         <Toaster theme="dark" position="top-center" richColors />
       </body>

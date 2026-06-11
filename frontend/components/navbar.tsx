@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, X, LogOut, User, Shield } from "lucide-react";
+import { Menu, X, LogOut, User, Shield, TrendingUp } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -32,13 +32,16 @@ export function Navbar() {
     <nav className="fixed top-0 left-0 right-0 z-50 bg-ink-950/85 backdrop-blur-xl border-b border-white/5">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Logo */}
-          <Link href="/" className="flex items-center group" aria-label="Melóstippek.hu">
-            <img
-              src="/logo.png"
-              alt="Melóstippek.hu"
-              className="h-9 sm:h-10 w-auto rounded-md"
-            />
+          {/* Logo — szöveges, a sötét témához illeszkedik, minden böngészőben azonos */}
+          <Link href="/" className="flex items-center gap-2 group" aria-label="Melóstippek.hu">
+            <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-lime/15 border border-lime/30 group-hover:bg-lime/25 transition-colors">
+              <TrendingUp size={18} className="text-lime" />
+            </span>
+            <span className="text-lg sm:text-xl font-extrabold tracking-tight whitespace-nowrap">
+              <span className="text-white">Melós</span>
+              <span className="text-lime">tippek</span>
+              <span className="text-white/40">.hu</span>
+            </span>
           </Link>
 
           {/* Desktop links */}

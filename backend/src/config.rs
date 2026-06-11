@@ -20,6 +20,8 @@ pub struct Config {
     // Odds API-k (proxy-zva, kulcs nem kerül ki a frontendre)
     pub odds_api_key: String,
     pub pandascore_api_key: String,
+    // DeepSeek (Ask AI chat — proxy-zva, kulcs nem kerül ki a frontendre)
+    pub deepseek_api_key: String,
     // Email
     pub smtp_host: String,
     pub smtp_port: u16,
@@ -65,6 +67,7 @@ impl Config {
                 .unwrap_or(true),
             odds_api_key: std::env::var("ODDS_API_KEY").unwrap_or_default(),
             pandascore_api_key: std::env::var("PANDASCORE_API_KEY").unwrap_or_default(),
+            deepseek_api_key: std::env::var("DEEPSEEK_API_KEY").unwrap_or_default(),
             smtp_host: std::env::var("SMTP_HOST").unwrap_or_else(|_| "smtp.gmail.com".into()),
             smtp_port: std::env::var("SMTP_PORT").unwrap_or_else(|_| "587".into()).parse().unwrap_or(587),
             smtp_user: std::env::var("SMTP_USER").unwrap_or_default(),

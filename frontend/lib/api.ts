@@ -88,6 +88,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ package: pkg }),
     }),
+  // Ask AI chat — a backend proxyzza a DeepSeek-et, kulcs nincs a frontenden
+  askAi: (messages: { role: "user" | "assistant"; content: string }[]) =>
+    request<{ reply: string }>("/api/ai/chat", {
+      method: "POST",
+      body: JSON.stringify({ messages }),
+    }),
   // teszt segéd: előfizetés azonnali lejáratása
   testPayment: (pkg: string, action: "expire") =>
     request<{ ok: boolean; status: string }>("/api/payments/test", {

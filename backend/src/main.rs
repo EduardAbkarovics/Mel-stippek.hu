@@ -73,6 +73,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(routes::tips::router())
         .merge(routes::track::router())
         .merge(routes::admin::router())
+        .merge(routes::ai::router())
         .layer(cors)
         .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http())
