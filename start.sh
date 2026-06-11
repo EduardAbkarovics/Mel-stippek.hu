@@ -7,6 +7,7 @@ APP_DIR="${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 BACKEND_PORT="${BACKEND_PORT:-8080}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 SSL_EMAIL="${SSL_EMAIL:-eduardabkarovics1@gmail.com}"
+DEPLOY_REPO="${DEPLOY_REPO:-/home/deploy/Mel-stippek.hu}"
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Ezt rootkent futtasd: su - root, majd ./start.sh"
@@ -16,6 +17,21 @@ fi
 echo "== Melostippek.hu telepites indul =="
 echo "Domain: ${DOMAIN}"
 echo "Mappa: ${APP_DIR}"
+
+# Friss kod lehuzasa, majd a script ujrainditasa az uj verzioval.
+# A MELOSTIPPEK_PULLED flag vedi ki a vegtelen ciklust, az exec pedig azt,
+# hogy a bash a futas kozben modosult scriptet olvasson tovabb.
+if [ "${MELOSTIPPEK_PULLED:-0}" != "1" ] && [ -d "${APP_DIR}/.git" ]; then
+  echo "== Friss kod lehuzasa =="
+  cd "${APP_DIR}"
+  git config --global --add safe.directory "${DEPLOY_REPO}" >/dev/null 2>&1 || true
+  if [ "${APP_DIR}" != "${DEPLOY_REPO}" ] && [ -d "${DEPLOY_REPO}/.git" ]; then
+    git pull "${DEPLOY_REPO}" main || git pull origin main
+  else
+    git pull origin main
+  fi
+  MELOSTIPPEK_PULLED=1 exec "${APP_DIR}/start.sh"
+fi
 
 apt-get update
 apt-get install -y \
