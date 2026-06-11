@@ -15,7 +15,7 @@ import { Pricing } from "@/components/pricing";
 import { ProofSlider } from "@/components/ui/image-auto-slider";
 
 const TELEGRAM_URL = "https://t.me/+ilO15-pADJ8xNDZk";
-const DISCORD_URL = "https://discord.gg/QNyvzUGEje";
+const DISCORD_URL = "https://discord.gg/5UtrVq6EHy";
 
 const HIGHLIGHTS = [
   {

@@ -59,6 +59,8 @@ async fn build_public_user(state: &AppState, user: &User) -> AppResult<PublicUse
         avatar_url: user.avatar_url.clone(),
         telegram_username: user.telegram_username.clone(),
         telegram_linked: user.telegram_id.is_some(),
+        discord_username: user.discord_username.clone(),
+        discord_linked: user.discord_id.is_some(),
         is_admin: state.config.is_admin(&user.email),
         packages,
     })
@@ -129,6 +131,10 @@ async fn register(
         telegram_username: None,
         name: req.name.clone(),
         avatar_url: None,
+        discord_id: None,
+        discord_username: None,
+        discord_link_state_hash: None,
+        discord_link_state_expires: None,
         reset_token_hash: None,
         reset_token_expires: None,
         created_at: now,
@@ -515,6 +521,10 @@ async fn telegram_auth(
                     telegram_username: tg_username.clone(),
                     name: tg_name,
                     avatar_url: tg_photo,
+                    discord_id: None,
+                    discord_username: None,
+                    discord_link_state_hash: None,
+                    discord_link_state_expires: None,
                     reset_token_hash: None,
                     reset_token_expires: None,
                     created_at: now,
@@ -573,5 +583,7 @@ async fn public_config(State(state): State<Arc<AppState>>) -> Json<serde_json::V
         "google_login_enabled": !state.config.google_client_id.is_empty(),
         "simplepay_enabled": !state.config.simplepay_merchant.is_empty(),
         "test_payment_enabled": state.config.allow_test_payment,
+        "discord_enabled": state.config.discord_enabled(),
+        "discord_invite_url": state.config.discord_invite_url,
     }))
 }

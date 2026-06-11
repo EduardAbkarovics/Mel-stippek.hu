@@ -10,7 +10,7 @@ use crate::{
     error::{AppError, AppResult},
     middleware::AdminUser,
     models::{subscription::PACKAGES, tip::CATEGORIES, PublicSubscription, PublicTip, Tip, User},
-    services::{mongo as db, odds},
+    services::{discord_bot, mongo as db, odds},
     AppState,
 };
 
@@ -221,6 +221,7 @@ async fn grant_subscription(
     db::activate_subscription(&state.mongo.subscriptions, oid, &req.package, "admin-grant", expires)
         .await
         .map_err(AppError::Internal)?;
+    discord_bot::spawn_sync(state.clone(), oid);
 
     Ok(Json(serde_json::json!({
         "ok": true,
@@ -246,6 +247,7 @@ async fn revoke_subscription(
     if !found {
         return Err(AppError::NotFound);
     }
+    discord_bot::spawn_sync(state.clone(), oid);
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -284,6 +286,10 @@ async fn create_test_accounts(
                         telegram_username: None,
                         name: Some(format!("Teszt — {package}")),
                         avatar_url: None,
+                        discord_id: None,
+                        discord_username: None,
+                        discord_link_state_hash: None,
+                        discord_link_state_expires: None,
                         reset_token_hash: None,
                         reset_token_expires: None,
                         created_at: now,

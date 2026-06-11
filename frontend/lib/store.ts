@@ -10,6 +10,8 @@ export interface User {
   avatar_url: string | null;
   telegram_username: string | null;
   telegram_linked: boolean;
+  discord_username: string | null;
+  discord_linked: boolean;
   is_admin: boolean;
   packages: string[];
 }

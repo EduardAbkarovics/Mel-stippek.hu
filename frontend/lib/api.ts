@@ -61,6 +61,11 @@ export const api = {
     }),
   telegramUnlink: () =>
     request("/api/auth/telegram/unlink", { method: "POST" }),
+  // Discord linkelés: a backend adja az authorize URL-t (state nonce-szal)
+  discordAuthUrl: () =>
+    request<{ url: string }>("/api/auth/discord/url"),
+  discordUnlink: () =>
+    request("/api/auth/discord/unlink", { method: "POST" }),
   publicConfig: () =>
     request<{
       telegram_group_url: string;
@@ -68,6 +73,8 @@ export const api = {
       google_login_enabled: boolean;
       simplepay_enabled: boolean;
       test_payment_enabled: boolean;
+      discord_enabled: boolean;
+      discord_invite_url: string;
     }>("/api/config"),
   myTips: () =>
     request<{ packages: string[]; tips: Tip[] }>("/api/tips"),

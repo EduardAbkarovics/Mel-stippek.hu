@@ -14,7 +14,7 @@ use crate::{
     error::{AppError, AppResult},
     middleware::AuthUser,
     models::subscription::PACKAGES,
-    services::{mongo as db, simplepay},
+    services::{discord_bot, mongo as db, simplepay},
     AppState,
 };
 
@@ -142,6 +142,7 @@ async fn confirm_payment(
     .map_err(AppError::Internal)?;
 
     tracing::info!("Előfizetés aktiválva (back-confirm): user={user_oid} csomag={package}");
+    discord_bot::spawn_sync(state.clone(), user_oid);
     Ok(Json(json!({ "ok": true, "status": "active", "package": package })))
 }
 
@@ -181,6 +182,7 @@ async fn simplepay_ipn(
             .await
             .map_err(AppError::Internal)?;
             tracing::info!("Előfizetés aktiválva (IPN): user={user_oid} csomag={package}");
+            discord_bot::spawn_sync(state.clone(), user_oid);
         }
     }
 
@@ -248,6 +250,7 @@ async fn test_payment(
                 ));
             }
             tracing::info!("TESZT előfizetés lejáratva: user={} csomag={}", auth.email, req.package);
+            discord_bot::spawn_sync(state.clone(), auth.user_id);
             Ok(Json(json!({ "ok": true, "status": "expired" })))
         }
         _ => Err(AppError::BadRequest(

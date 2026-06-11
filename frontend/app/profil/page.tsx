@@ -1,22 +1,52 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, User, Send, Unlink, BadgeCheck, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { TelegramLogin } from "@/components/telegram-login";
+import { DiscordIcon, DiscordLink } from "@/components/discord-link";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 import { PACKAGE_LABELS } from "@/lib/utils";
+
+/** A Discord callback query paramjaiból toast + URL tisztítás (Suspense-ben fut). */
+function DiscordCallbackHandler({ onLinked }: { onLinked: () => void }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const linked = searchParams.get("discord");
+    const error = searchParams.get("discord_error");
+    if (!linked && !error) return;
+    if (linked === "linked") {
+      toast.success("Discord fiók összekapcsolva! A rangjaidat megkaptad a szerveren.");
+      onLinked();
+    } else if (error) {
+      const messages: Record<string, string> = {
+        expired: "A kapcsolási link lejárt — próbáld újra!",
+        taken: "Ezt a Discord fiókot már egy másik fiókhoz kapcsolták.",
+      };
+      toast.error(messages[error] || "Discord hiba történt, próbáld újra!");
+    }
+    router.replace("/profil");
+  }, [searchParams, router, onLinked]);
+
+  return null;
+}
 
 export default function ProfilPage() {
   const router = useRouter();
   const { isAuthenticated, user, setUser, hasHydrated } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [canceling, setCanceling] = useState<string | null>(null);
+  const [discordCfg, setDiscordCfg] = useState<{
+    enabled: boolean;
+    invite: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!hasHydrated) return;
@@ -29,6 +59,12 @@ export default function ProfilPage() {
       .then(setUser)
       .catch(() => {})
       .finally(() => setLoading(false));
+    api
+      .publicConfig()
+      .then((c) =>
+        setDiscordCfg({ enabled: c.discord_enabled, invite: c.discord_invite_url })
+      )
+      .catch(() => {});
   }, [hasHydrated, isAuthenticated, router, setUser]);
 
   async function refreshUser() {
@@ -67,6 +103,16 @@ export default function ProfilPage() {
     }
   }
 
+  async function unlinkDiscord() {
+    try {
+      await api.discordUnlink();
+      toast.success("Discord fiók leválasztva — az előfizetéses rangok lekerültek");
+      refreshUser();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Hiba történt");
+    }
+  }
+
   if (!isAuthenticated || loading) {
     return (
       <div className="min-h-screen bg-ink-950 flex items-center justify-center">
@@ -77,6 +123,9 @@ export default function ProfilPage() {
 
   return (
     <div className="min-h-screen bg-ink-950">
+      <Suspense fallback={null}>
+        <DiscordCallbackHandler onLinked={refreshUser} />
+      </Suspense>
       <Navbar />
       <main className="pt-28 sm:pt-32 pb-16 px-4 sm:px-6 lg:px-8 min-h-screen">
         <div className="max-w-2xl mx-auto space-y-6">
@@ -183,6 +232,61 @@ export default function ProfilPage() {
               </>
             )}
           </div>
+
+          {/* Discord összekapcsolás */}
+          {(discordCfg?.enabled || user?.discord_linked) && (
+            <div className="slip-card p-6">
+              <h3 className="font-bold mb-2 flex items-center gap-2">
+                <span className="text-lime">
+                  <DiscordIcon size={16} />
+                </span>
+                Discord fiók
+              </h3>
+              {user?.discord_linked ? (
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <p className="text-white/50 text-sm">
+                      Összekapcsolva:{" "}
+                      <span className="text-white font-semibold">
+                        {user.discord_username || "Discord fiók"}
+                      </span>
+                    </p>
+                    <button
+                      onClick={unlinkDiscord}
+                      className="flex items-center gap-1.5 text-xs text-white/50 hover:text-red-400 transition-colors"
+                    >
+                      <Unlink size={13} />
+                      Leválasztás
+                    </button>
+                  </div>
+                  <p className="text-lime/80 text-xs">
+                    A Discord rangjaid automatikusan frissülnek az előfizetéseid
+                    alapján.
+                  </p>
+                  {discordCfg?.invite && (
+                    <a
+                      href={discordCfg.invite}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-lime inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm"
+                    >
+                      <DiscordIcon size={15} />
+                      Ugrás a szerverre
+                    </a>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <p className="text-white/50 text-sm mb-4">
+                    Kapcsold össze a Discord fiókodat — automatikusan bekerülsz a
+                    szerverünkre, és megkapod az előfizetésednek járó rangokat. A
+                    tippek nagy része Discordon érkezik!
+                  </p>
+                  <DiscordLink />
+                </>
+              )}
+            </div>
+          )}
 
           {/* Ingyenes csoport */}
           <div className="slip-card border-lime/20 p-6 text-center">

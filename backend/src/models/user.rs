@@ -18,6 +18,16 @@ pub struct User {
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
+    /// Discord user id (snowflake) — stringként, mert túlnő az i64-en JS oldalon.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub discord_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub discord_username: Option<String>,
+    /// Discord OAuth state nonce (sha256 hex) + lejárat — a link flow köti a userhez.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub discord_link_state_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub discord_link_state_expires: Option<BsonDateTime>,
     /// Jelszó visszaállító token (sha256 hex) + lejárat
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reset_token_hash: Option<String>,
@@ -41,6 +51,8 @@ pub struct PublicUser {
     pub avatar_url: Option<String>,
     pub telegram_username: Option<String>,
     pub telegram_linked: bool,
+    pub discord_username: Option<String>,
+    pub discord_linked: bool,
     pub is_admin: bool,
     /// Aktív (nem lejárt) előfizetések csomagjai: "foci" | "esport" | "elo"
     pub packages: Vec<String>,

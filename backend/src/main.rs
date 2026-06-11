@@ -52,6 +52,7 @@ async fn main() -> anyhow::Result<()> {
             .build()?,
         odds_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
         rate_limits: std::sync::Mutex::new(std::collections::HashMap::new()),
+        discord_ids: tokio::sync::OnceCell::new(),
     });
 
     // SimplePay havi automatikus megújítás ütemezője (12 óránként ellenőriz).
@@ -66,9 +67,22 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // Discord rang-szinkron ütemező (óránként): a lejárt előfizetések rangjait is leszedi.
+    if state.config.discord_enabled() {
+        let state = state.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(90)).await;
+            loop {
+                services::discord_bot::sync_all(state.as_ref()).await;
+                tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            }
+        });
+    }
+
     let app = Router::new()
         .route("/api/health", get(|| async { "ok" }))
         .merge(routes::auth::router())
+        .merge(routes::discord::router())
         .merge(routes::payments::router())
         .merge(routes::tips::router())
         .merge(routes::track::router())
