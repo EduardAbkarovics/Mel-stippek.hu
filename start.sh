@@ -56,6 +56,13 @@ DIVERGED
   MELOSTIPPEK_PULLED=1 exec "${APP_DIR}/start.sh"
 fi
 
+# Regi docker maradekok takaritasa (lemezterulet) — futo kontenert,
+# hasznalt image-et es named volume-ot nem bant.
+if command -v docker >/dev/null 2>&1; then
+  echo "== Docker takaritas =="
+  docker system prune -f || true
+fi
+
 apt-get update
 apt-get install -y \
   ca-certificates \
@@ -238,16 +245,30 @@ systemctl enable nginx
 systemctl restart nginx
 
 echo "== SSL tanusitvany probalkozas =="
+# Elso kor: MINDEN domain (ekezetes punycode is). Ha barmelyik domain DNS-e
+# nem ide mutat, a certbot az egesz kerest eldobja — ezert van a masodik kor,
+# ami csak a fo domain + www parosra fut, igy a HTTPS sosem marad le rola.
 CERT_ARGS=(-d "${DOMAIN}" -d "${WWW_DOMAIN}")
 for d in ${EXTRA_DOMAINS}; do CERT_ARGS+=(-d "$d"); done
+CERT_ARGS_MAIN=(-d "${DOMAIN}" -d "${WWW_DOMAIN}")
 if certbot --nginx "${CERT_ARGS[@]}" \
   --non-interactive --agree-tos -m "${SSL_EMAIL}" --redirect --expand; then
-  echo "SSL kesz."
+  echo "SSL kesz minden domainre."
+elif certbot --nginx "${CERT_ARGS_MAIN[@]}" \
+  --non-interactive --agree-tos -m "${SSL_EMAIL}" --redirect --expand; then
+  cat <<MSG
+SSL kesz a fo domainre (${DOMAIN} + ${WWW_DOMAIN}), de az ekezetes domainekre
+(${EXTRA_DOMAINS}) nem sikerult — valoszinuleg a DNS-uk meg nem erre a VPS-re
+mutat. Allitsd be az A rekordot a domain-szolgaltatonal, majd futtasd:
+
+  certbot --nginx ${CERT_ARGS[@]} --agree-tos -m ${SSL_EMAIL} --redirect --expand
+
+MSG
 else
   cat <<MSG
-SSL most nem sikerult minden domainre. Ez altalaban akkor van, ha valamelyik
-domain DNS-e meg nem erre a VPS-re mutat. A mar meglevo tanusitvany ervenyes
-marad, az oldal megy tovabb. SSL-hez futtasd kesobb:
+SSL most nem sikerult. Ez altalaban akkor van, ha a domain DNS-e meg nem erre
+a VPS-re mutat. A mar meglevo tanusitvany ervenyes marad, az oldal megy tovabb.
+SSL-hez futtasd kesobb:
 
   certbot --nginx ${CERT_ARGS[@]} --agree-tos -m ${SSL_EMAIL} --redirect --expand
 
