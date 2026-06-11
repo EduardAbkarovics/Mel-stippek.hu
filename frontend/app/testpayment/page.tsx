@@ -22,8 +22,9 @@ const TEST_PAYMENT_ALLOWED_EMAILS = new Set([
   "fuckcursorsubcription1234@freemail.hu",
 ]);
 
-/* Teszt fizetés oldal — SimplePay (sandbox) fizetéssel aktiválható az előfizetés,
+/* Teszt fizetés oldal — Stripe checkouttal aktiválható az előfizetés,
    illetve lejáratható, hogy a teljes előfizetői folyamat tesztelhető legyen.
+   FIGYELEM: éles Stripe kulccsal a checkout VALÓDI terhelés!
    Csak akkor működik, ha a backenden ALLOW_TEST_PAYMENT=true. */
 export default function TestPaymentPage() {
   const router = useRouter();
@@ -49,7 +50,7 @@ export default function TestPaymentPage() {
     api.me().then(setUser).catch(() => {});
   }, [hasHydrated, isAuthenticated, router, setUser, user?.email]);
 
-  // SimplePay checkout indítása (sandbox módban valódi terhelés nélkül tesztelhető).
+  // Stripe checkout indítása — éles kulccsal ez VALÓDI terhelés!
   // A sikeres fizetés a /fizetes/siker oldalra tér vissza és aktiválja az előfizetést.
   async function startTestPayment(pkg: string) {
     setBusy(`${pkg}:activate`);
@@ -97,7 +98,7 @@ export default function TestPaymentPage() {
             <div>
               <h1 className="text-2xl font-extrabold">Teszt fizetés</h1>
               <p className="text-white/40 text-sm">
-                SimplePay sandbox fizetés — a teljes előfizetői folyamat tesztelésére
+                Stripe fizetés — a teljes előfizetői folyamat tesztelésére (éles kulccsal valódi terhelés!)
               </p>
             </div>
           </div>

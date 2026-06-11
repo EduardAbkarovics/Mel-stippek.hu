@@ -93,6 +93,15 @@ export default function ProfilPage() {
     }
   }
 
+  async function openBillingPortal() {
+    try {
+      const { url } = await api.billingPortal();
+      window.location.href = url;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Hiba történt");
+    }
+  }
+
   async function unlinkTelegram() {
     try {
       await api.telegramUnlink();
@@ -183,6 +192,12 @@ export default function ProfilPage() {
                     </div>
                   </div>
                 ))}
+                <button
+                  onClick={openBillingPortal}
+                  className="w-full mt-1 text-center text-xs text-white/40 hover:text-lime transition-colors py-2"
+                >
+                  Számlák és bankkártya kezelése (Stripe portál) →
+                </button>
               </div>
             ) : (
               <div className="text-center py-4">

@@ -30,10 +30,28 @@ if [ "${MELOSTIPPEK_PULLED:-0}" != "1" ] && [ -d "${APP_DIR}/.git" ]; then
   git config --global --add safe.directory "${DEPLOY_REPO}" >/dev/null 2>&1 || true
   # a file-transport remote-hoz a .git utvonal is kell a safe.directory-ba
   git config --global --add safe.directory "${DEPLOY_REPO}/.git" >/dev/null 2>&1 || true
-  if [ "${APP_DIR}" != "${DEPLOY_REPO}" ] && [ -d "${DEPLOY_REPO}/.git" ]; then
-    git pull "${DEPLOY_REPO}" main || git pull origin main
-  else
-    git pull origin main
+  # CSAK fast-forward pull — szettarto agaknal nem probal merge-elni, hanem
+  # ertheto utasitast ad. Igy nem fordulhat elo a "divergent branches" hiba.
+  pull_ff() {
+    if [ "${APP_DIR}" != "${DEPLOY_REPO}" ] && [ -d "${DEPLOY_REPO}/.git" ]; then
+      git pull --ff-only "${DEPLOY_REPO}" main 2>/dev/null && return 0
+    fi
+    git pull --ff-only origin main
+  }
+  if ! pull_ff; then
+    cat <<'DIVERGED'
+
+!! HIBA: a szerveren olyan commitok vannak, amik nincsenek fent GitHubon.
+!! NE futtass "git reset --hard"-ot, mert elveszne a helyi munka!
+!! Mentsd fel a helyi munkat GitHubra, utana futtasd ujra a start.sh-t:
+!!
+!!   git branch szerver-mentes
+!!   git push origin szerver-mentes
+!!
+!! Majd a Windows gepen Claude osszefesuli a szerver-mentes agat a main-nel.
+
+DIVERGED
+    exit 1
   fi
   MELOSTIPPEK_PULLED=1 exec "${APP_DIR}/start.sh"
 fi
@@ -109,6 +127,24 @@ if grep -Eq '^MONGODB_URL=$' backend/.env; then
   echo "HIBA: backend/.env fajlban a MONGODB_URL ures. Toltsd ki, majd futtasd ujra."
   exit 1
 fi
+
+# Hianyzo env kulcsok automatikus potlasa: ha egy uj release uj kulcsot igenyel,
+# itt hozzafuzodik uresen a backend/.env-hez, a vegen pedig figyelmeztetes szol rola.
+# Igy a start.sh sosem hasal el azert, mert egy kulcs meg nem letezik a fajlban.
+ENV_KEYS="STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET DEEPSEEK_API_KEY \
+DISCORD_WEBHOOK_PAYMENT DISCORD_WEBHOOK_SIGNUP DISCORD_WEBHOOK_VISIT \
+DISCORD_CLIENT_ID DISCORD_CLIENT_SECRET DISCORD_BOT_TOKEN \
+ODDS_API_KEY PANDASCORE_API_KEY"
+MISSING_VALUES=""
+for key in ${ENV_KEYS}; do
+  if ! grep -q "^${key}=" backend/.env; then
+    echo "${key}=" >> backend/.env
+    echo "  + backend/.env: ${key} kulcs hozzaadva (ures)"
+  fi
+  if grep -Eq "^${key}=$" backend/.env; then
+    MISSING_VALUES="${MISSING_VALUES} ${key}"
+  fi
+done
 
 echo "== Frontend dependency telepites =="
 npm install
@@ -237,3 +273,14 @@ Logok:
   journalctl -u nginx -f
 
 MSG
+
+if [ -n "${MISSING_VALUES}" ]; then
+  cat <<MSG
+!! FIGYELEM: az alabbi kulcsok URESEK a backend/.env-ben — a hozzajuk tartozo
+!! funkcio addig nem mukodik, amig ki nem toltod oket:
+!!  ${MISSING_VALUES}
+!!
+!! Kitoltes utan: systemctl restart melostippek-backend
+
+MSG
+fi

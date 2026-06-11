@@ -12,11 +12,10 @@ pub struct Config {
     pub google_client_secret: String,
     /// Admin emailek env-ből (ADMIN_EMAILS, vesszővel elválasztva) — nem hardcode-olt.
     pub admin_emails: Vec<String>,
-    // SimplePay (OTP)
-    pub simplepay_merchant: String,
-    pub simplepay_secret_key: String,
-    /// Sandbox (teszt) környezet használata. Élesben false.
-    pub simplepay_sandbox: bool,
+    // Stripe (kártyás, havi megújuló fizetés)
+    pub stripe_secret_key: String,
+    /// Webhook aláírás titok (whsec_…) — a Stripe dashboardban a webhook endpointnál.
+    pub stripe_webhook_secret: String,
     // Odds API-k (proxy-zva, kulcs nem kerül ki a frontendre)
     pub odds_api_key: String,
     pub pandascore_api_key: String,
@@ -35,6 +34,8 @@ pub struct Config {
     // Discord webhookok (értesítések)
     pub discord_webhook_signup: String,
     pub discord_webhook_visit: String,
+    /// Fizetési értesítések (számlázáshoz: ki, mit, mikor, mennyiért).
+    pub discord_webhook_payment: String,
     // Discord fiók-összekapcsolás + rang-szinkron (bot REST API-n át)
     pub discord_client_id: String,
     pub discord_client_secret: String,
@@ -67,11 +68,8 @@ impl Config {
                 .map(|s| s.trim().to_lowercase())
                 .filter(|s| !s.is_empty())
                 .collect(),
-            simplepay_merchant: std::env::var("SIMPLEPAY_MERCHANT").unwrap_or_default(),
-            simplepay_secret_key: std::env::var("SIMPLEPAY_SECRET_KEY").unwrap_or_default(),
-            simplepay_sandbox: std::env::var("SIMPLEPAY_SANDBOX")
-                .map(|v| v == "true" || v == "1")
-                .unwrap_or(true),
+            stripe_secret_key: std::env::var("STRIPE_SECRET_KEY").unwrap_or_default(),
+            stripe_webhook_secret: std::env::var("STRIPE_WEBHOOK_SECRET").unwrap_or_default(),
             odds_api_key: std::env::var("ODDS_API_KEY").unwrap_or_default(),
             pandascore_api_key: std::env::var("PANDASCORE_API_KEY").unwrap_or_default(),
             deepseek_api_key: std::env::var("DEEPSEEK_API_KEY").unwrap_or_default(),
@@ -86,6 +84,7 @@ impl Config {
                 .unwrap_or_else(|_| "https://t.me/+ilO15-pADJ8xNDZk".into()),
             discord_webhook_signup: std::env::var("DISCORD_WEBHOOK_SIGNUP").unwrap_or_default(),
             discord_webhook_visit: std::env::var("DISCORD_WEBHOOK_VISIT").unwrap_or_default(),
+            discord_webhook_payment: std::env::var("DISCORD_WEBHOOK_PAYMENT").unwrap_or_default(),
             discord_client_id: std::env::var("DISCORD_CLIENT_ID").unwrap_or_default(),
             discord_client_secret: std::env::var("DISCORD_CLIENT_SECRET").unwrap_or_default(),
             discord_bot_token: std::env::var("DISCORD_BOT_TOKEN").unwrap_or_default(),

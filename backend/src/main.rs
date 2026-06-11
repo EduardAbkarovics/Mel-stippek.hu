@@ -55,17 +55,7 @@ async fn main() -> anyhow::Result<()> {
         discord_ids: tokio::sync::OnceCell::new(),
     });
 
-    // SimplePay havi automatikus megújítás ütemezője (12 óránként ellenőriz).
-    {
-        let state = state.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-            loop {
-                routes::payments::process_recurring_renewals(state.as_ref()).await;
-                tokio::time::sleep(std::time::Duration::from_secs(12 * 3600)).await;
-            }
-        });
-    }
+    // A havi megújulást a Stripe kezeli (subscription mode), a webhook frissíti a lejáratot.
 
     // Discord rang-szinkron ütemező (óránként): a lejárt előfizetések rangjait is leszedi.
     if state.config.discord_enabled() {

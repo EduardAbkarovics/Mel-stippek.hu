@@ -13,15 +13,21 @@ pub struct Subscription {
     pub package: String,
     /// "active" | "pending" | "cancelled" | "expired"
     pub status: String,
-    /// SimplePay utolsó orderRef (azonosításhoz).
+    /// SimplePay utolsó orderRef (régi előfizetéseknél maradt meg).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub simplepay_order_ref: Option<String>,
-    /// Recurring tokenek a havi automatikus terheléshez (tokenenként egy levonás).
+    /// Recurring tokenek (régi SimplePay előfizetések maradványa).
     #[serde(default)]
     pub simplepay_tokens: Vec<String>,
-    /// A tokenek érvényességi határa (recurring.until).
+    /// A tokenek érvényességi határa (régi SimplePay mező).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token_until: Option<BsonDateTime>,
+    /// Stripe customer id (cus_…) — ügyfélportálhoz és megújításhoz.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stripe_customer_id: Option<String>,
+    /// Stripe subscription id (sub_…) — a havi megújulást a Stripe kezeli.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stripe_subscription_id: Option<String>,
     /// Automatikus megújítás bekapcsolva (lemondáskor false).
     #[serde(default)]
     pub auto_renew: bool,

@@ -71,24 +71,27 @@ export const api = {
       telegram_group_url: string;
       telegram_bot_username: string;
       google_login_enabled: boolean;
-      simplepay_enabled: boolean;
+      stripe_enabled: boolean;
       test_payment_enabled: boolean;
       discord_enabled: boolean;
       discord_invite_url: string;
     }>("/api/config"),
   myTips: () =>
     request<{ packages: string[]; tips: Tip[] }>("/api/tips"),
-  // SimplePay recurring checkout — visszaadja a fizetési URL-t
+  // Stripe checkout (havi megújuló) — visszaadja a fizetési oldal URL-jét
   checkout: (pkg: string) =>
     request<{ url: string }>("/api/payments/checkout", {
       method: "POST",
       body: JSON.stringify({ package: pkg }),
     }),
-  // SimplePay-ről visszatérés után: a `r`+`s` query paramokkal megerősíti/aktiválja
+  // Stripe-ról visszatérés után: a ?session_id=… alapján megerősíti/aktiválja
   confirmPayment: (search: string) =>
     request<{ ok: boolean; status: string; package?: string }>(
       `/api/payments/confirm${search}`
     ),
+  // Stripe ügyfélportál: számlák, kártya csere — visszaadja a portál URL-jét
+  billingPortal: () =>
+    request<{ url: string }>("/api/payments/portal", { method: "POST" }),
   // automatikus megújítás lemondása (hozzáférés a lejáratig megmarad)
   cancelSubscription: (pkg: string) =>
     request<{ ok: boolean }>("/api/payments/cancel", {

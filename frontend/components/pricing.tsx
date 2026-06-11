@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, Zap, Gamepad2, Radio } from "lucide-react";
+import { Check, Zap, Gamepad2, Radio } from "lucide-react";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { CheckoutModal, type CheckoutPlan } from "@/components/checkout-modal";
 import { useAuthStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -67,25 +67,20 @@ const PLANS: Plan[] = [
 export function Pricing() {
   const router = useRouter();
   const { isAuthenticated } = useAuthStore();
-  const [loading, setLoading] = useState<string | null>(null);
+  const [selected, setSelected] = useState<CheckoutPlan | null>(null);
 
-  async function subscribe(planId: string) {
+  function subscribe(plan: Plan) {
     if (!isAuthenticated) {
       toast.info("Először regisztrálj vagy jelentkezz be!");
       router.push("/register");
       return;
     }
-    setLoading(planId);
-    try {
-      const { url } = await api.checkout(planId);
-      window.location.href = url;
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Hiba történt");
-      setLoading(null);
-    }
+    setSelected(plan);
   }
 
   return (
+    <>
+    <CheckoutModal plan={selected} onClose={() => setSelected(null)} />
     <div id="csomagok" className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6">
       {PLANS.map((plan) => (
         <div
@@ -136,20 +131,19 @@ export function Pricing() {
           </ul>
 
           <button
-            onClick={() => subscribe(plan.id)}
-            disabled={loading !== null}
+            onClick={() => subscribe(plan)}
             className={cn(
-              "w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-60",
+              "w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all",
               plan.highlight
                 ? "btn-lime"
                 : "bg-ink-700 text-white hover:bg-ink-600"
             )}
           >
-            {loading === plan.id && <Loader2 size={15} className="animate-spin" />}
             Előfizetek
           </button>
         </div>
       ))}
     </div>
+    </>
   );
 }

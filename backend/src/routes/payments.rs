@@ -1,8 +1,7 @@
 use axum::{
     body::Bytes,
     extract::{Query, State},
-    http::{header, HeaderMap, HeaderValue},
-    response::{IntoResponse, Response},
+    http::{HeaderMap, StatusCode},
     routing::{get, post},
     Json, Router,
 };
@@ -14,7 +13,7 @@ use crate::{
     error::{AppError, AppResult},
     middleware::AuthUser,
     models::subscription::PACKAGES,
-    services::{discord_bot, mongo as db, simplepay},
+    services::{discord, discord_bot, mongo as db, stripe},
     AppState,
 };
 
@@ -22,26 +21,10 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/api/payments/checkout", post(create_checkout))
         .route("/api/payments/confirm", get(confirm_payment))
-        .route("/api/payments/ipn", post(simplepay_ipn))
+        .route("/api/payments/webhook", post(stripe_webhook))
         .route("/api/payments/cancel", post(cancel_subscription))
+        .route("/api/payments/portal", post(billing_portal))
         .route("/api/payments/test", post(test_payment))
-}
-
-/// orderRef = "{userHex}-{package}-{epochMs}". Így az IPN/back önmagában azonosítja a usert+csomagot.
-fn make_order_ref(user_hex: &str, package: &str) -> String {
-    format!("{}-{}-{}", user_hex, package, chrono::Utc::now().timestamp_millis())
-}
-
-fn parse_order_ref(order_ref: &str) -> Option<(ObjectId, String)> {
-    let mut parts = order_ref.splitn(3, '-');
-    let user = parts.next()?;
-    let package = parts.next()?;
-    parts.next()?; // timestamp
-    let oid = ObjectId::parse_str(user).ok()?;
-    if !PACKAGES.contains(&package) {
-        return None;
-    }
-    Some((oid, package.to_string()))
 }
 
 #[derive(serde::Deserialize)]
@@ -49,7 +32,7 @@ struct PackageRequest {
     package: String,
 }
 
-/// SimplePay recurring checkout indítása — visszaadja a fizetési URL-t.
+/// Stripe Checkout (havi megújuló, HUF) — visszaadja a fizetési oldal URL-jét.
 async fn create_checkout(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
@@ -58,148 +41,264 @@ async fn create_checkout(
     if !PACKAGES.contains(&req.package.as_str()) {
         return Err(AppError::BadRequest("Ismeretlen csomag".into()));
     }
+    if state.config.stripe_secret_key.is_empty() {
+        return Err(AppError::BadRequest("A fizetés jelenleg nem elérhető".into()));
+    }
 
-    let user_hex = auth.user_id.to_hex();
-    let order_ref = make_order_ref(&user_hex, &req.package);
-
-    let res = simplepay::start_recurring_checkout(
+    let url = stripe::create_subscription_checkout(
         &state.http,
         &state.config,
         &req.package,
         &auth.email,
-        &order_ref,
+        &auth.user_id.to_hex(),
     )
     .await
     .map_err(AppError::Internal)?;
 
-    // a tokeneket már most eltároljuk (a fizetés sikeressége az IPN/back-confirm)
-    db::store_recurring_tokens(
+    tracing::info!("Stripe checkout indítva: user={} csomag={}", auth.email, req.package);
+    Ok(Json(json!({ "url": url })))
+}
+
+/// A session-ből kinyeri a subscription idejét, és aktiválja az előfizetést.
+/// A lejáratot a Stripe periódus végéhez igazítjuk (tartalék: most + 31 nap).
+async fn activate_from_session(
+    state: &Arc<AppState>,
+    session: &serde_json::Value,
+) -> anyhow::Result<Option<(ObjectId, String)>> {
+    if session["payment_status"].as_str() != Some("paid") {
+        return Ok(None);
+    }
+    let Some(user_oid) = session["client_reference_id"]
+        .as_str()
+        .and_then(|s| ObjectId::parse_str(s).ok())
+    else {
+        return Ok(None);
+    };
+    let package = session["metadata"]["package"].as_str().unwrap_or("");
+    if !PACKAGES.contains(&package) {
+        return Ok(None);
+    }
+
+    let customer_id = session["customer"].as_str().unwrap_or("");
+    let subscription_id = session["subscription"].as_str().unwrap_or("");
+
+    // periódus vége a Stripe-tól; ha nem érhető el, +31 nap
+    let mut expires_ms = (chrono::Utc::now() + chrono::Duration::days(31)).timestamp_millis();
+    if !subscription_id.is_empty() {
+        if let Ok(sub) = stripe::get_subscription(&state.http, &state.config, subscription_id).await
+        {
+            if let Some(end) = sub["current_period_end"].as_i64() {
+                expires_ms = end * 1000;
+            }
+        }
+    }
+
+    db::activate_stripe_subscription(
         &state.mongo.subscriptions,
-        auth.user_id,
-        &req.package,
-        &order_ref,
-        &res.tokens,
-        BsonDateTime::from_millis(res.token_until_ms),
+        user_oid,
+        package,
+        customer_id,
+        subscription_id,
+        BsonDateTime::from_millis(expires_ms),
     )
-    .await
-    .map_err(AppError::Internal)?;
+    .await?;
 
-    tracing::info!(
-        "SimplePay checkout indítva: user={} csomag={} tokenek={}",
-        auth.email,
-        req.package,
-        res.tokens.len()
-    );
-    Ok(Json(json!({ "url": res.payment_url })))
+    discord_bot::spawn_sync(state.clone(), user_oid);
+    Ok(Some((user_oid, package.to_string())))
 }
 
 #[derive(serde::Deserialize)]
 struct ConfirmQuery {
-    r: Option<String>,
-    s: Option<String>,
+    session_id: String,
 }
 
-/// A SimplePay-ről visszatérés megerősítése (a frontend a `r`+`s` query paramokat küldi).
-/// Sikeres fizetésnél aktiválja az előfizetést — az IPN-től függetlenül is (idempotens).
+/// A Stripe-ról visszatérés megerősítése (?session_id=…). A webhooktól függetlenül
+/// is aktivál — idempotens, így a kettő együtt sem okoz gondot.
 async fn confirm_payment(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
     Query(q): Query<ConfirmQuery>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let (Some(r), Some(s)) = (q.r, q.s) else {
-        return Ok(Json(json!({ "ok": false, "status": "missing" })));
-    };
+    let session = stripe::get_checkout_session(&state.http, &state.config, &q.session_id)
+        .await
+        .map_err(AppError::Internal)?;
 
-    if !simplepay::verify(&state.config.simplepay_secret_key, r.as_bytes(), &s) {
+    // csak a saját fizetését erősítheti meg
+    if session["client_reference_id"].as_str() != Some(auth.user_id.to_hex().as_str()) {
         return Err(AppError::Forbidden);
     }
 
-    let decoded = simplepay::decode_back_r(&r)
-        .map_err(|_| AppError::BadRequest("Hibás válasz".into()))?;
-    let event = decoded["e"].as_str().unwrap_or("");
-    let order_ref = decoded["o"].as_str().unwrap_or("");
-
-    let Some((user_oid, package)) = parse_order_ref(order_ref) else {
-        return Err(AppError::BadRequest("Ismeretlen rendelés".into()));
-    };
-    if user_oid != auth.user_id {
-        return Err(AppError::Forbidden);
+    match activate_from_session(&state, &session)
+        .await
+        .map_err(AppError::Internal)?
+    {
+        Some((user_oid, package)) => {
+            tracing::info!("Előfizetés aktiválva (confirm): user={user_oid} csomag={package}");
+            Ok(Json(json!({ "ok": true, "status": "active", "package": package })))
+        }
+        None => Ok(Json(json!({ "ok": false, "status": "pending" }))),
     }
-
-    if event != "SUCCESS" {
-        return Ok(Json(json!({ "ok": false, "status": event.to_lowercase() })));
-    }
-
-    let expires = (chrono::Utc::now() + chrono::Duration::days(31)).timestamp_millis();
-    db::activate_subscription(
-        &state.mongo.subscriptions,
-        user_oid,
-        &package,
-        order_ref,
-        BsonDateTime::from_millis(expires),
-    )
-    .await
-    .map_err(AppError::Internal)?;
-
-    tracing::info!("Előfizetés aktiválva (back-confirm): user={user_oid} csomag={package}");
-    discord_bot::spawn_sync(state.clone(), user_oid);
-    Ok(Json(json!({ "ok": true, "status": "active", "package": package })))
 }
 
-/// SimplePay IPN (server-to-server). Az aláírást ellenőrizzük, FINISHED esetén aktiválunk,
-/// és kötelezően aláírt nyugtával válaszolunk (különben a SimplePay újraküldi).
-async fn simplepay_ipn(
+/// Stripe webhook (aláírás-ellenőrzéssel). Innen jön az aktiválás, a havi
+/// megújítás és a megszűnés — plusz a Discord fizetési értesítő a számlázáshoz.
+async fn stripe_webhook(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     body: Bytes,
-) -> Result<Response, AppError> {
+) -> Result<StatusCode, AppError> {
     let sig = headers
-        .get("Signature")
+        .get("stripe-signature")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-
-    if !simplepay::verify(&state.config.simplepay_secret_key, &body, sig) {
-        tracing::warn!("SimplePay IPN: érvénytelen aláírás");
+    if !stripe::verify_signature(&body, sig, &state.config.stripe_webhook_secret) {
+        tracing::warn!("Stripe webhook: érvénytelen aláírás");
         return Err(AppError::Forbidden);
     }
 
-    let payload: serde_json::Value =
-        serde_json::from_slice(&body).map_err(|_| AppError::BadRequest("Hibás JSON".into()))?;
-    let status = payload["status"].as_str().unwrap_or("");
-    let order_ref = payload["orderRef"].as_str().unwrap_or("");
-    tracing::info!("SimplePay IPN: status={status} orderRef={order_ref}");
+    let event: serde_json::Value =
+        serde_json::from_slice(&body).map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let event_type = event["type"].as_str().unwrap_or("");
+    tracing::info!("Stripe webhook: {event_type}");
 
-    if status == "FINISHED" {
-        if let Some((user_oid, package)) = parse_order_ref(order_ref) {
-            let expires = (chrono::Utc::now() + chrono::Duration::days(31)).timestamp_millis();
-            db::activate_subscription(
+    match event_type {
+        "checkout.session.completed" => {
+            let session = &event["data"]["object"];
+            if let Some((user_oid, package)) = activate_from_session(&state, session)
+                .await
+                .map_err(AppError::Internal)?
+            {
+                tracing::info!("Előfizetés aktiválva (webhook): user={user_oid} csomag={package}");
+
+                // Discord értesítő a számlázáshoz — a Stripe-os számlázási adatokkal
+                let details = &session["customer_details"];
+                let label = stripe::package_info(&package).map(|(n, _)| n).unwrap_or("?");
+                discord::notify_payment(
+                    state.http.clone(),
+                    state.config.discord_webhook_payment.clone(),
+                    discord::PaymentNotice {
+                        kind: "first",
+                        email: details["email"].as_str().unwrap_or("?").to_string(),
+                        name: details["name"].as_str().map(|s| s.to_string()),
+                        address: format_address(&details["address"]),
+                        package_label: label.to_string(),
+                        amount_huf: session["amount_total"].as_u64().unwrap_or(0) / 100,
+                        paid_at_utc: chrono::Utc::now(),
+                        stripe_id: session["id"].as_str().unwrap_or("?").to_string(),
+                    },
+                );
+            }
+        }
+        "invoice.paid" => {
+            let invoice = &event["data"]["object"];
+            // az első (subscription_create) számlát a checkout.session.completed kezeli
+            if invoice["billing_reason"].as_str() != Some("subscription_cycle") {
+                return Ok(StatusCode::OK);
+            }
+            let sub_id = invoice["subscription"].as_str().unwrap_or("");
+            if sub_id.is_empty() {
+                return Ok(StatusCode::OK);
+            }
+
+            // új periódus vége a számla soraiból
+            let period_end = invoice["lines"]["data"][0]["period"]["end"]
+                .as_i64()
+                .map(|s| s * 1000)
+                .unwrap_or_else(|| {
+                    (chrono::Utc::now() + chrono::Duration::days(31)).timestamp_millis()
+                });
+
+            let renewed = db::renew_stripe_subscription(
                 &state.mongo.subscriptions,
-                user_oid,
-                &package,
-                order_ref,
-                BsonDateTime::from_millis(expires),
+                sub_id,
+                BsonDateTime::from_millis(period_end),
             )
             .await
             .map_err(AppError::Internal)?;
-            tracing::info!("Előfizetés aktiválva (IPN): user={user_oid} csomag={package}");
-            discord_bot::spawn_sync(state.clone(), user_oid);
+
+            if renewed {
+                tracing::info!("Előfizetés megújítva (invoice.paid): {sub_id}");
+                if let Ok(Some(sub)) =
+                    db::find_subscription_by_stripe_sub(&state.mongo.subscriptions, sub_id).await
+                {
+                    discord_bot::spawn_sync(state.clone(), sub.user_id);
+                    let label = stripe::package_info(&sub.package).map(|(n, _)| n).unwrap_or("?");
+                    discord::notify_payment(
+                        state.http.clone(),
+                        state.config.discord_webhook_payment.clone(),
+                        discord::PaymentNotice {
+                            kind: "renewal",
+                            email: invoice["customer_email"].as_str().unwrap_or("?").to_string(),
+                            name: invoice["customer_name"].as_str().map(|s| s.to_string()),
+                            address: format_address(&invoice["customer_address"]),
+                            package_label: label.to_string(),
+                            amount_huf: invoice["amount_paid"].as_u64().unwrap_or(0) / 100,
+                            paid_at_utc: chrono::Utc::now(),
+                            stripe_id: invoice["id"].as_str().unwrap_or("?").to_string(),
+                        },
+                    );
+                }
+            }
         }
+        "customer.subscription.deleted" => {
+            let sub_id = event["data"]["object"]["id"].as_str().unwrap_or("");
+            if let Ok(Some(sub)) =
+                db::cancel_stripe_subscription(&state.mongo.subscriptions, sub_id).await
+            {
+                tracing::info!("Előfizetés megszűnt (subscription.deleted): {sub_id}");
+                discord_bot::spawn_sync(state.clone(), sub.user_id);
+                let email = db::find_user_by_id(&state.mongo.users, sub.user_id)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|u| u.email)
+                    .unwrap_or_else(|| "?".into());
+                let label = stripe::package_info(&sub.package).map(|(n, _)| n).unwrap_or("?");
+                discord::notify_payment(
+                    state.http.clone(),
+                    state.config.discord_webhook_payment.clone(),
+                    discord::PaymentNotice {
+                        kind: "cancelled",
+                        email,
+                        name: None,
+                        address: None,
+                        package_label: label.to_string(),
+                        amount_huf: 0,
+                        paid_at_utc: chrono::Utc::now(),
+                        stripe_id: sub_id.to_string(),
+                    },
+                );
+            }
+        }
+        _ => {}
     }
 
-    // aláírt visszaigazolás
-    let (resp_body, resp_sig) =
-        simplepay::build_ipn_response(&state.config.simplepay_secret_key, &body)
-            .map_err(AppError::Internal)?;
-    let mut h = HeaderMap::new();
-    h.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    h.insert(
-        "Signature",
-        HeaderValue::from_str(&resp_sig).map_err(|e| AppError::Internal(e.into()))?,
-    );
-    Ok((h, resp_body).into_response())
+    Ok(StatusCode::OK)
 }
 
-/// Automatikus megújítás lemondása — a hozzáférés a lejáratig megmarad.
+/// Stripe cím objektum → egysoros magyar formátum (számlázáshoz).
+fn format_address(addr: &serde_json::Value) -> Option<String> {
+    let line1 = addr["line1"].as_str()?;
+    let mut parts = vec![];
+    if let Some(p) = addr["postal_code"].as_str() {
+        parts.push(p.to_string());
+    }
+    if let Some(c) = addr["city"].as_str() {
+        parts.push(c.to_string());
+    }
+    parts.push(line1.to_string());
+    if let Some(l2) = addr["line2"].as_str() {
+        if !l2.is_empty() {
+            parts.push(l2.to_string());
+        }
+    }
+    if let Some(c) = addr["country"].as_str() {
+        parts.push(format!("({c})"));
+    }
+    Some(parts.join(", "))
+}
+
+/// Lemondás: a Stripe-nál a periódus végén szűnik meg, addig a hozzáférés él.
 async fn cancel_subscription(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
@@ -208,14 +307,50 @@ async fn cancel_subscription(
     if !PACKAGES.contains(&req.package.as_str()) {
         return Err(AppError::BadRequest("Ismeretlen csomag".into()));
     }
-    let found = db::set_auto_renew(&state.mongo.subscriptions, auth.user_id, &req.package, false)
+
+    let subs = db::user_subscriptions(&state.mongo.subscriptions, auth.user_id)
         .await
         .map_err(AppError::Internal)?;
-    if !found {
+    let Some(sub) = subs.iter().find(|s| s.package == req.package) else {
         return Err(AppError::BadRequest("Ehhez a csomaghoz nincs előfizetésed".into()));
+    };
+
+    // Stripe oldali lemondás (ha Stripe-os az előfizetés)
+    if let Some(stripe_sub) = &sub.stripe_subscription_id {
+        if !stripe_sub.is_empty() {
+            stripe::cancel_at_period_end(&state.http, &state.config, stripe_sub)
+                .await
+                .map_err(AppError::Internal)?;
+        }
     }
+    db::set_auto_renew(&state.mongo.subscriptions, auth.user_id, &req.package, false)
+        .await
+        .map_err(AppError::Internal)?;
+
     tracing::info!("Megújítás lemondva: user={} csomag={}", auth.email, req.package);
     Ok(Json(json!({ "ok": true })))
+}
+
+/// Stripe ügyfélportál: számlák letöltése, kártya csere, lemondás kezelése.
+async fn billing_portal(
+    State(state): State<Arc<AppState>>,
+    auth: AuthUser,
+) -> AppResult<Json<serde_json::Value>> {
+    let subs = db::user_subscriptions(&state.mongo.subscriptions, auth.user_id)
+        .await
+        .map_err(AppError::Internal)?;
+    let Some(customer_id) = subs
+        .iter()
+        .filter_map(|s| s.stripe_customer_id.clone())
+        .find(|c| !c.is_empty())
+    else {
+        return Err(AppError::BadRequest("Nincs Stripe-os előfizetésed".into()));
+    };
+
+    let url = stripe::billing_portal_url(&state.http, &state.config, &customer_id)
+        .await
+        .map_err(AppError::Internal)?;
+    Ok(Json(json!({ "url": url })))
 }
 
 #[derive(serde::Deserialize)]
@@ -256,81 +391,5 @@ async fn test_payment(
         _ => Err(AppError::BadRequest(
             "Aktiváláshoz használd a fizetést (Előfizetek gomb)".into(),
         )),
-    }
-}
-
-/// Havi automatikus megújítás: a hamarosan lejáró, megújítható előfizetéseket
-/// egy-egy tárolt tokennel terheli a SimplePay /dorecurring-on. Az ütemező hívja.
-pub async fn process_recurring_renewals(state: &AppState) {
-    let soon = (chrono::Utc::now() + chrono::Duration::days(1)).timestamp_millis();
-    let subs = match db::find_renewable_subscriptions(
-        &state.mongo.subscriptions,
-        BsonDateTime::from_millis(soon),
-    )
-    .await
-    {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::error!("Megújítás: lekérdezési hiba: {e:#}");
-            return;
-        }
-    };
-
-    if subs.is_empty() {
-        return;
-    }
-    tracing::info!("Megújítás: {} előfizetés terhelése esedékes", subs.len());
-
-    for sub in subs {
-        let Some(sub_id) = sub.id else { continue };
-        let Some(token) = sub.simplepay_tokens.first().cloned() else { continue };
-
-        let email = match db::find_user_by_id(&state.mongo.users, sub.user_id).await {
-            Ok(Some(u)) => u.email,
-            _ => {
-                tracing::warn!("Megújítás: nem található user {}", sub.user_id);
-                continue;
-            }
-        };
-
-        let order_ref = make_order_ref(&sub.user_id.to_hex(), &sub.package);
-        match simplepay::do_recurring(
-            &state.http,
-            &state.config,
-            &sub.package,
-            &email,
-            &token,
-            &order_ref,
-        )
-        .await
-        {
-            Ok(true) => {
-                let expires =
-                    (chrono::Utc::now() + chrono::Duration::days(31)).timestamp_millis();
-                if let Err(e) = db::renew_with_token(
-                    &state.mongo.subscriptions,
-                    sub_id,
-                    &token,
-                    &order_ref,
-                    BsonDateTime::from_millis(expires),
-                )
-                .await
-                {
-                    tracing::error!("Megújítás: DB hiba: {e:#}");
-                } else {
-                    tracing::info!(
-                        "Előfizetés megújítva (recurring): user={} csomag={}",
-                        sub.user_id,
-                        sub.package
-                    );
-                }
-            }
-            Ok(false) => tracing::warn!(
-                "Megújítás: sikertelen terhelés user={} csomag={}",
-                sub.user_id,
-                sub.package
-            ),
-            Err(e) => tracing::error!("Megújítás: /dorecurring hiba: {e:#}"),
-        }
     }
 }

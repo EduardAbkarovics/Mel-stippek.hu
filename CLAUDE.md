@@ -14,7 +14,7 @@
 - Mobil reszponzivitás mindenhol: `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`, `text-base sm:text-lg`, `w-full sm:w-auto`, `p-4 sm:p-6` minták.
 - Auth: opaque session token (Authorization: Bearer), MongoDB `sessions` collectionben sha256 hash-elve, TTL indexszel.
 - Admin jogosultság: `ADMIN_EMAILS` env (sosem hardcode).
-- API kulcsok (SimplePay, Odds API, PandaScore) CSAK a backenden — a frontend mindent a backend proxy-n át kér.
+- API kulcsok (Stripe, Odds API, PandaScore, DeepSeek) CSAK a backenden — a frontend mindent a backend proxy-n át kér.
 - Csomag ID-k: `foci` | `esport` | `elo`. Kategóriák: `over_under` | `win` | `light`.
 - Tipp eredmények: `pending` | `won` | `lost`.
 
@@ -22,7 +22,7 @@
 | Fájl | Mit csinál |
 |---|---|
 | `backend/src/routes/auth.rs` | register/login/Google/Telegram/jelszó reset |
-| `backend/src/routes/payments.rs` | SimplePay checkout + IPN + back-confirm + recurring (havi auto-megújítás, ütemező a main.rs-ben) |
+| `backend/src/routes/payments.rs` + `services/stripe.rs` | Stripe checkout (subscription, HUF) + webhook + confirm + cancel + ügyfélportál; a havi megújítást a Stripe kezeli; fizetési Discord-értesítő (DISCORD_WEBHOOK_PAYMENT) |
 | `backend/src/services/odds.rs` | odds-api.io (foci+élő, max 2 bookmaker: Bet365+TippmixPRO) + PandaScore (e-sport) proxy, 10 perc cache |
 | `backend/src/routes/admin.rs` | naptár, tipp CRUD, userek |
 | `backend/src/routes/discord.rs` + `services/discord_bot.rs` | Discord fiók-link (OAuth) + előfizetés-alapú rang-sync (bot REST, óránkénti sweep a main.rs-ben) |
