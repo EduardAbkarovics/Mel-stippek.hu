@@ -24,3 +24,4 @@ dist/
 
 # Promó videók — nagy média fájlok nem mennek a repóba
 *.mp4
+!frontend/public/ai-avatar.mp4
