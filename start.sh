@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DOMAIN="${DOMAIN:-melostippek.hu}"
+# Az éles domain az ékezetes melóstippek.hu — punycode alakban (IDN).
+DOMAIN="${DOMAIN:-xn--melstippek-ibb.hu}"
 WWW_DOMAIN="${WWW_DOMAIN:-www.${DOMAIN}}"
 APP_DIR="${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 BACKEND_PORT="${BACKEND_PORT:-8080}"
