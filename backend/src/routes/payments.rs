@@ -109,6 +109,37 @@ async fn activate_from_session(
     .await?;
 
     discord_bot::spawn_sync(state.clone(), user_oid);
+
+    // Discord fizetési értesítő a számlázáshoz. Itt küldjük (nem csak a webhookból),
+    // így a Stripe dashboard webhook beállítása nélkül is megy. A session id-re
+    // cache-elt dedupe védi ki, hogy a confirm ÉS a webhook duplán értesítsen.
+    let session_id = session["id"].as_str().unwrap_or("?");
+    let dedupe_key = format!("paynotice:{session_id}");
+    if state.cache_get(&dedupe_key, 86_400).is_none() {
+        state.cache_put(dedupe_key, serde_json::json!(true));
+        let details = &session["customer_details"];
+        let label = stripe::package_info(package).map(|(n, _)| n).unwrap_or("?");
+        let label = if is_test {
+            format!("⚠️ TESZT — {label} (200 Ft / 1 nap)")
+        } else {
+            label.to_string()
+        };
+        discord::notify_payment(
+            state.http.clone(),
+            state.config.discord_webhook_payment.clone(),
+            discord::PaymentNotice {
+                kind: "first",
+                email: details["email"].as_str().unwrap_or("?").to_string(),
+                name: details["name"].as_str().map(|s| s.to_string()),
+                address: format_address(&details["address"]),
+                package_label: label,
+                amount_huf: session["amount_total"].as_u64().unwrap_or(0) / 100,
+                paid_at_utc: chrono::Utc::now(),
+                stripe_id: session_id.to_string(),
+            },
+        );
+    }
+
     Ok(Some((user_oid, package.to_string())))
 }
 
@@ -169,34 +200,12 @@ async fn stripe_webhook(
     match event_type {
         "checkout.session.completed" => {
             let session = &event["data"]["object"];
+            // az aktiválás küldi a Discord értesítőt is (session id-re dedupe-olva)
             if let Some((user_oid, package)) = activate_from_session(&state, session)
                 .await
                 .map_err(AppError::Internal)?
             {
                 tracing::info!("Előfizetés aktiválva (webhook): user={user_oid} csomag={package}");
-
-                // Discord értesítő a számlázáshoz — a Stripe-os számlázási adatokkal
-                let details = &session["customer_details"];
-                let label = stripe::package_info(&package).map(|(n, _)| n).unwrap_or("?");
-                let label = if session["metadata"]["test_payment"].as_str() == Some("true") {
-                    format!("⚠️ TESZT — {label} (200 Ft / 1 nap)")
-                } else {
-                    label.to_string()
-                };
-                discord::notify_payment(
-                    state.http.clone(),
-                    state.config.discord_webhook_payment.clone(),
-                    discord::PaymentNotice {
-                        kind: "first",
-                        email: details["email"].as_str().unwrap_or("?").to_string(),
-                        name: details["name"].as_str().map(|s| s.to_string()),
-                        address: format_address(&details["address"]),
-                        package_label: label,
-                        amount_huf: session["amount_total"].as_u64().unwrap_or(0) / 100,
-                        paid_at_utc: chrono::Utc::now(),
-                        stripe_id: session["id"].as_str().unwrap_or("?").to_string(),
-                    },
-                );
             }
         }
         "invoice.paid" => {

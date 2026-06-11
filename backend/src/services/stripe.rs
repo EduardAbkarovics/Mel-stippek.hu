@@ -109,6 +109,7 @@ pub async fn create_test_checkout(
         ("mode", "payment".into()),
         ("locale", "hu".into()),
         ("payment_method_types[]", "card".into()),
+        ("billing_address_collection", "required".into()),
         ("line_items[0][price_data][currency]", "huf".into()),
         (
             "line_items[0][price_data][product_data][name]",
