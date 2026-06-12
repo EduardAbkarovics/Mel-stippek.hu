@@ -13,11 +13,11 @@ import { MeshGradient } from "@paper-design/shaders-react";
 
 const COLORS = [
   "#0a0b0d", // ink-950 — az alap
-  "#10150e", // ink, leheletnyi zölddel
-  "#2e4a16", // olajzöld-lime folt
+  "#0c100b", // ink, leheletnyi zölddel
+  "#1c2c0e", // sötét olajzöld-lime folt
   "#0a0b0d", // még egy ink folt, hogy a sötét domináljon
-  "#123a2e", // mély teal derengés
-  "#4a6b1e", // lime fény — a leglátványosabb folt
+  "#0c241c", // mély teal derengés
+  "#2c420f", // lime fény — a leglátványosabb folt
 ];
 
 // pötty-színek: lime, teal, fehér — alacsony alfával keverve
@@ -36,6 +36,7 @@ type Dot = {
   phase: number;
   rgb: [number, number, number];
   alpha: number;
+  glow: boolean; // a nagyobbak lágy fényudvart kapnak
 };
 
 function FloatingDots() {
@@ -58,17 +59,21 @@ function FloatingDots() {
       canvas!.width = Math.ceil(w * dpr);
       canvas!.height = Math.ceil(h * dpr);
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const count = w < 640 ? 28 : 55;
-      dots = Array.from({ length: count }, () => ({
-        x: Math.random() * w,
-        y: Math.random() * h,
-        vy: 6 + Math.random() * 12,
-        size: 0.8 + Math.random() * 1.2,
-        sway: 4 + Math.random() * 10,
-        phase: Math.random() * Math.PI * 2,
-        rgb: DOT_COLORS[Math.floor(Math.random() * DOT_COLORS.length)],
-        alpha: 0.15 + Math.random() * 0.35,
-      }));
+      const count = w < 640 ? 34 : 68;
+      dots = Array.from({ length: count }, () => {
+        const size = 1.2 + Math.random() * 1.8;
+        return {
+          x: Math.random() * w,
+          y: Math.random() * h,
+          vy: 7 + Math.random() * 14,
+          size,
+          sway: 5 + Math.random() * 12,
+          phase: Math.random() * Math.PI * 2,
+          rgb: DOT_COLORS[Math.floor(Math.random() * DOT_COLORS.length)],
+          alpha: 0.3 + Math.random() * 0.35,
+          glow: size > 2.2,
+        };
+      });
     }
 
     let last = performance.now() / 1000;
@@ -87,9 +92,18 @@ function FloatingDots() {
         }
         const x = d.x + Math.sin(now * 0.4 + d.phase) * d.sway;
         // pislakolas: lassu szinusz az alapalfa korul
-        const tw = d.alpha * (0.6 + 0.4 * Math.sin(now * 1.1 + d.phase * 3));
-        ctx!.globalAlpha = Math.max(tw, 0.04);
-        ctx!.fillStyle = `rgb(${d.rgb[0]},${d.rgb[1]},${d.rgb[2]})`;
+        const tw = d.alpha * (0.65 + 0.35 * Math.sin(now * 1.1 + d.phase * 3));
+        const color = `rgb(${d.rgb[0]},${d.rgb[1]},${d.rgb[2]})`;
+        // lagy fenyudvar a nagyobb pottyoknek
+        if (d.glow) {
+          ctx!.globalAlpha = tw * 0.25;
+          ctx!.fillStyle = color;
+          ctx!.beginPath();
+          ctx!.arc(x, d.y, d.size * 3, 0, Math.PI * 2);
+          ctx!.fill();
+        }
+        ctx!.globalAlpha = Math.max(tw, 0.06);
+        ctx!.fillStyle = color;
         ctx!.beginPath();
         ctx!.arc(x, d.y, d.size, 0, Math.PI * 2);
         ctx!.fill();
@@ -130,7 +144,7 @@ export function PaperShadersBg() {
         className="absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse 90% 75% at 50% 35%, transparent 50%, rgba(10,11,13,0.45) 100%)",
+            "radial-gradient(ellipse 90% 75% at 50% 35%, transparent 45%, rgba(10,11,13,0.6) 100%)",
         }}
       />
       <div className="grain absolute inset-0" />
