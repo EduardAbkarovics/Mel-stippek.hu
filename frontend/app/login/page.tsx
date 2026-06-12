@@ -3,14 +3,16 @@
 import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { motion } from "framer-motion";
-import { Trophy, Mail, Lock, ArrowRight, Loader2, Eye, EyeOff } from "lucide-react";
+import { Loader2, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
-import { Navbar } from "@/components/navbar";
+import { AuthShell } from "@/components/auth-shell";
 import { GoogleButton } from "@/components/google-button";
 import { TelegramLogin } from "@/components/telegram-login";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
+
+const INPUT_CLASS =
+  "w-full px-4 py-3 rounded-xl bg-ink-850/80 border border-white/10 focus:border-lime/50 outline-none text-sm transition-colors placeholder:text-white/30";
 
 function LoginContent() {
   const router = useRouter();
@@ -47,101 +49,87 @@ function LoginContent() {
   }
 
   return (
-    <div className="min-h-screen hero-bg">
-      <Navbar />
-      <div className="flex items-center justify-center min-h-screen px-4 pt-20 pb-10">
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-sm"
-        >
-          <div className="text-center mb-8">
-            <div className="w-14 h-14 rounded-2xl bg-lime flex items-center justify-center mx-auto mb-4">
-              <Trophy size={24} className="text-ink-950" />
-            </div>
-            <h1 className="text-2xl font-bold">Üdv újra!</h1>
-            <p className="text-white/40 text-sm mt-1">
-              Jelentkezz be a tippjeidhez
-            </p>
-          </div>
-
-          <GoogleButton label="Belépés Google fiókkal" />
-
-          <div className="my-4">
-            <TelegramLogin />
-          </div>
-
-          <div className="flex items-center gap-3 mb-4">
-            <div className="flex-1 h-px bg-white/10" />
-            <span className="text-xs text-white/30">vagy emaillel</span>
-            <div className="flex-1 h-px bg-white/10" />
-          </div>
-
-          <form onSubmit={handleLogin} className="space-y-3">
-            <div className="relative">
-              <Mail size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/30" />
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Email címed"
-                required
-                className="w-full pl-9 pr-4 py-3.5 rounded-xl bg-ink-850 border border-white/10 focus:border-lime/50 outline-none text-sm transition-colors"
-              />
-            </div>
-            <div className="relative">
-              <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/30" />
-              <input
-                type={showPw ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Jelszó"
-                required
-                minLength={8}
-                className="w-full pl-9 pr-10 py-3.5 rounded-xl bg-ink-850 border border-white/10 focus:border-lime/50 outline-none text-sm transition-colors"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPw((p) => !p)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
-                tabIndex={-1}
-              >
-                {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
-              </button>
-            </div>
-
-            <div className="text-right">
-              <Link
-                href="/elfelejtett-jelszo"
-                className="text-xs text-white/40 hover:text-lime transition-colors"
-              >
-                Elfelejtetted a jelszavad?
-              </Link>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn-lime w-full py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 disabled:opacity-60"
-            >
-              {loading ? (
-                <Loader2 size={15} className="animate-spin" />
-              ) : (
-                <ArrowRight size={15} />
-              )}
-              Belépés
-            </button>
-          </form>
-
-          <p className="text-center text-xs text-white/40 mt-5">
-            Még nincs fiókod?{" "}
-            <Link href="/register" className="text-lime font-medium hover:underline">
-              Regisztrálj itt
-            </Link>
-          </p>
-        </motion.div>
+    <AuthShell quote="Üdv újra! A nyerő széria folytatódik.">
+      <div className="mb-8 text-center">
+        <h1 className="text-2xl font-bold tracking-tight">Lépj be a fiókodba</h1>
+        <p className="mt-1.5 text-sm text-white/40">
+          Jelentkezz be, és nézd a napi tippeket
+        </p>
       </div>
-    </div>
+
+      <form onSubmit={handleLogin} className="space-y-4">
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-medium text-white/60">Email</span>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="te@email.hu"
+            required
+            className={INPUT_CLASS}
+          />
+        </label>
+
+        <label className="block">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="block text-xs font-medium text-white/60">Jelszó</span>
+            <Link
+              href="/elfelejtett-jelszo"
+              className="text-xs text-white/40 transition-colors hover:text-lime"
+            >
+              Elfelejtetted?
+            </Link>
+          </div>
+          <div className="relative">
+            <input
+              type={showPw ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Jelszavad"
+              required
+              minLength={8}
+              className={`${INPUT_CLASS} pr-11`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPw((p) => !p)}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/30 transition-colors hover:text-white/60"
+              aria-label={showPw ? "Jelszó elrejtése" : "Jelszó megjelenítése"}
+              tabIndex={-1}
+            >
+              {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+            </button>
+          </div>
+        </label>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="btn-lime flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm disabled:opacity-60"
+        >
+          {loading && <Loader2 size={15} className="animate-spin" />}
+          Belépés
+        </button>
+      </form>
+
+      <p className="mt-5 text-center text-xs text-white/40">
+        Még nincs fiókod?{" "}
+        <Link href="/register" className="font-medium text-lime hover:underline">
+          Regisztrálj itt
+        </Link>
+      </p>
+
+      <div className="my-6 flex items-center gap-3">
+        <div className="h-px flex-1 bg-white/10" />
+        <span className="text-xs text-white/30">vagy folytasd ezzel</span>
+        <div className="h-px flex-1 bg-white/10" />
+      </div>
+
+      <GoogleButton label="Belépés Google fiókkal" />
+      <div className="mt-4">
+        <TelegramLogin />
+      </div>
+    </AuthShell>
   );
 }
 
@@ -149,7 +137,7 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen hero-bg flex items-center justify-center">
+        <div className="flex min-h-screen items-center justify-center">
           <Loader2 className="animate-spin text-lime" size={32} />
         </div>
       }
