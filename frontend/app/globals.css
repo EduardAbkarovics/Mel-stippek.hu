@@ -39,36 +39,293 @@ html {
   border-radius: 4px;
 }
 
-/* Hero háttér: sötét, finom lime fény */
+/* Kiegyensúlyozott címsorok */
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+/* Hero háttér: sötét, finom lime fény — átlátszó alap, hogy az aurora átderengjen */
 .hero-bg {
   background:
     radial-gradient(ellipse 70% 45% at 50% -5%, rgba(185, 242, 79, 0.13), transparent 65%),
-    radial-gradient(ellipse 45% 35% at 85% 18%, rgba(185, 242, 79, 0.05), transparent 60%),
-    #0a0b0d;
+    radial-gradient(ellipse 45% 35% at 85% 18%, rgba(185, 242, 79, 0.05), transparent 60%);
 }
 
-/* Kártya stílus — a proof szelvények kinézete */
+/* Horgonyokra simán görget (a fixed navbar miatt scroll-mt a célokon) */
+html {
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* Finom filmszemcse a háttér-canvas fölé — eltünteti a gradiens-sávosodást */
+.grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  opacity: 0.05;
+}
+
+/* Kártya stílus — liquid glass: áttetsző üveg, felső élfény, mély árnyék */
 .slip-card {
-  background: #16181c;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 16px;
+  background: linear-gradient(
+    160deg,
+    rgba(28, 31, 36, 0.55),
+    rgba(16, 17, 20, 0.62)
+  );
+  -webkit-backdrop-filter: blur(16px) saturate(1.35);
+  backdrop-filter: blur(16px) saturate(1.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.25),
+    0 16px 48px rgba(0, 0, 0, 0.35);
+  transition:
+    border-color 0.3s ease,
+    box-shadow 0.3s ease,
+    transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.slip-card:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.25),
+    0 24px 64px rgba(0, 0, 0, 0.45);
+}
+
+/* Áttetsző fallback, ha nincs backdrop-filter támogatás */
+@supports not (backdrop-filter: blur(1px)) {
+  .slip-card {
+    background: #16181c;
+  }
 }
 
 .slip-inner {
-  background: #2b3037;
+  background: rgba(43, 48, 55, 0.7);
   border-radius: 12px;
 }
 
-/* Lime CTA gomb */
+/* Lime CTA gomb — Apple-szerű: felső élfény, lágy mélység, rugós emelkedés */
 .btn-lime {
-  background: #b9f24f;
+  background: linear-gradient(180deg, #c8f560 0%, #b9f24f 55%, #a8e23e 100%);
   color: #0a0b0d;
   font-weight: 700;
-  transition: all 0.2s ease;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.12),
+    0 8px 24px rgba(185, 242, 79, 0.18);
+  transition:
+    transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.25s ease;
 }
 .btn-lime:hover {
-  background: #c8f560;
-  box-shadow: 0 0 32px rgba(185, 242, 79, 0.35);
+  transform: translateY(-1.5px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.12),
+    0 12px 36px rgba(185, 242, 79, 0.32);
+}
+.btn-lime:active {
+  transform: translateY(0) scale(0.98);
+}
+.btn-lime:focus-visible {
+  outline: 2px solid #b9f24f;
+  outline-offset: 3px;
+}
+
+/* Periodikus fénycsillanás a lime gombon — iOS-szerű glint, ~5 mp-enként */
+.btn-lime {
+  position: relative;
+  overflow: hidden;
+}
+.btn-lime::after {
+  content: "";
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  left: 0;
+  width: 36%;
+  background: linear-gradient(
+    100deg,
+    transparent,
+    rgba(255, 255, 255, 0.45),
+    transparent
+  );
+  transform: translateX(-160%) skewX(-18deg);
+  animation: btn-shine 5.4s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes btn-shine {
+  0%,
+  72% {
+    transform: translateX(-160%) skewX(-18deg);
+  }
+  100% {
+    transform: translateX(440%) skewX(-18deg);
+  }
+}
+
+/* ── Lebegő üveg navbar (iOS island) ─────────────────────────────────────── */
+.glass-nav {
+  background: linear-gradient(
+    160deg,
+    rgba(22, 24, 28, 0.6),
+    rgba(10, 11, 13, 0.72)
+  );
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 12px 40px rgba(0, 0, 0, 0.35);
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .glass-nav {
+    background: rgba(16, 17, 20, 0.97);
+  }
+}
+
+/* ── Egérkövető fénypont a kártyákon (--mx/--my a GlowCard-ból) ──────────── */
+.glow-card {
+  position: relative;
+}
+.glow-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    240px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(185, 242, 79, 0.12),
+    transparent 65%
+  );
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+.glow-card:hover::after {
+  opacity: 1;
+}
+
+/* ── Körbefutó fénycsík a kiemelt kártya szegélyén (border beam) ──────────
+   A mask csak az 1.5px-es gyűrűt mutatja a forgó conic-gradientből. */
+.border-beam {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  overflow: hidden;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+.border-beam::before {
+  content: "";
+  position: absolute;
+  inset: -150%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 290deg,
+    rgba(185, 242, 79, 0.55) 332deg,
+    #ecffc4 356deg,
+    transparent 360deg
+  );
+  animation: beam-spin 7s linear infinite;
+}
+@keyframes beam-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Lágy, lassan lélegző lime derengés a kiemelt szavakon — solid szín */
+.text-glow {
+  text-shadow:
+    0 0 24px rgba(185, 242, 79, 0.45),
+    0 0 80px rgba(185, 242, 79, 0.18);
+  animation: glow-breathe 4.5s ease-in-out infinite;
+}
+@keyframes glow-breathe {
+  0%,
+  100% {
+    text-shadow:
+      0 0 24px rgba(185, 242, 79, 0.4),
+      0 0 80px rgba(185, 242, 79, 0.15);
+  }
+  50% {
+    text-shadow:
+      0 0 32px rgba(185, 242, 79, 0.6),
+      0 0 110px rgba(185, 242, 79, 0.3);
+  }
+}
+
+/* A navbar sziget beúszása betöltéskor */
+.nav-drop {
+  animation: nav-drop 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes nav-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Pulzáló gyűrűk a CTA ikon körül */
+.cta-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  border: 1px solid rgba(185, 242, 79, 0.5);
+  animation: ring-pulse 2.6s ease-out infinite;
+  pointer-events: none;
+}
+.cta-ring-2 {
+  animation-delay: 1.3s;
+}
+@keyframes ring-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  70%,
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+/* A proof sáv megáll, amíg az egér rajta van — meg lehet nézni a szelvényt */
+.scroll-container:hover .animate-infinite-scroll {
+  animation-play-state: paused;
+}
+
+/* Mozgásérzékeny felhasználóknak: az ambient animációk leállnak */
+@media (prefers-reduced-motion: reduce) {
+  .ai-orb,
+  .ai-orb-glow,
+  .ai-bob,
+  .btn-lime::after,
+  .border-beam::before,
+  .text-glow,
+  .nav-drop,
+  .cta-ring {
+    animation: none !important;
+  }
 }
 
 /* Görgető sáv (proof slider) elhalványuló szélekkel */

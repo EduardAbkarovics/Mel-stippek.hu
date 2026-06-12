@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Check, Zap, Gamepad2, Radio } from "lucide-react";
 import { toast } from "sonner";
 import { CheckoutModal, type CheckoutPlan } from "@/components/checkout-modal";
+import { BorderBeam } from "@/components/ui/border-beam";
+import { GlowCard } from "@/components/ui/glow-card";
 import { useAuthStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -81,15 +83,16 @@ export function Pricing() {
   return (
     <>
     <CheckoutModal plan={selected} onClose={() => setSelected(null)} />
-    <div id="csomagok" className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6">
       {PLANS.map((plan) => (
-        <div
+        <GlowCard
           key={plan.id}
           className={cn(
-            "slip-card p-6 sm:p-7 flex flex-col relative",
+            "slip-card p-6 sm:p-7 flex flex-col relative hover:-translate-y-1.5",
             plan.highlight && "border-lime/40 shadow-[0_0_40px_rgba(185,242,79,0.08)]"
           )}
         >
+          {plan.highlight && <BorderBeam />}
           {plan.badge && (
             <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-lime text-ink-950 text-[11px] font-extrabold px-3 py-1 rounded-full whitespace-nowrap">
               {plan.badge}
@@ -108,13 +111,13 @@ export function Pricing() {
             <h3 className="font-bold text-lg">{plan.name}</h3>
           </div>
 
-          <div className="flex items-baseline gap-2 mb-1">
+          <div className="flex flex-wrap items-baseline gap-x-2 mb-1">
             {plan.oldPrice && (
-              <span className="text-white/30 line-through text-xl font-semibold">
+              <span className="text-white/30 line-through text-base font-semibold whitespace-nowrap">
                 {plan.oldPrice.toLocaleString("hu-HU")} Ft
               </span>
             )}
-            <span className="text-3xl sm:text-4xl font-extrabold">
+            <span className="text-3xl sm:text-4xl font-extrabold whitespace-nowrap">
               {plan.price.toLocaleString("hu-HU")} Ft
             </span>
             <span className="text-white/40 text-sm">/ hó</span>
@@ -141,7 +144,7 @@ export function Pricing() {
           >
             Előfizetek
           </button>
-        </div>
+        </GlowCard>
       ))}
     </div>
     </>

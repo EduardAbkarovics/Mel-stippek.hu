@@ -83,7 +83,7 @@ export default function AdminPage() {
 
   if (!hasHydrated || !isAuthenticated) {
     return (
-      <div className="min-h-screen bg-ink-950 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="animate-spin text-lime" size={32} />
       </div>
     );
@@ -92,7 +92,7 @@ export default function AdminPage() {
   // Be van jelentkezve, de nem admin email → érthető üzenet redirect helyett
   if (user && !user.is_admin) {
     return (
-      <div className="min-h-screen bg-ink-950">
+      <div className="min-h-screen">
         <Navbar />
         <div className="flex items-center justify-center min-h-screen px-4">
           <div className="slip-card p-8 text-center max-w-md animate-scale-in">
@@ -113,7 +113,7 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-ink-950">
+    <div className="min-h-screen">
       <Navbar />
       <main className="pt-24 sm:pt-28 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">

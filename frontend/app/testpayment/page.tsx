@@ -101,14 +101,14 @@ export default function TestPaymentPage() {
 
   if (!hasHydrated || !isAuthenticated || enabled === null) {
     return (
-      <div className="min-h-screen bg-ink-950 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="animate-spin text-lime" size={32} />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-ink-950">
+    <div className="min-h-screen">
       <Navbar />
       <main className="pt-28 sm:pt-32 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-2xl mx-auto space-y-6">

@@ -39,9 +39,9 @@ export function Navbar() {
   }
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-ink-950/85 backdrop-blur-xl border-b border-white/5">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+    <nav className="fixed top-0 left-0 right-0 z-50 px-3 sm:px-5 pt-3">
+      <div className="max-w-6xl mx-auto glass-nav nav-drop rounded-2xl px-3 sm:px-5">
+        <div className="flex items-center justify-between h-14">
           {/* Logo — szöveges, a sötét témához illeszkedik, minden böngészőben azonos */}
           <Link href="/" className="flex items-center gap-2 group" aria-label="Melóstippek.hu">
             <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-lime/15 border border-lime/30 group-hover:bg-lime/25 transition-colors">
@@ -135,11 +135,10 @@ export function Navbar() {
             </button>
           </div>
         </div>
-      </div>
 
-      {/* Mobile menu */}
-      {open && (
-        <div className="md:hidden bg-ink-900 border-t border-white/5 px-4 py-3 space-y-1">
+        {/* Mobile menu — a kapszulán belül nyílik, az üveg sziget kitágul */}
+        {open && (
+          <div className="md:hidden border-t border-white/[0.06] px-1 py-3 space-y-1 animate-fade-up">
           {NAV_LINKS.map((l) => (
             <Link
               key={l.href}
@@ -197,8 +196,9 @@ export function Navbar() {
               </Link>
             </>
           )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </nav>
   );
 }

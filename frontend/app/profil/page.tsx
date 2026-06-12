@@ -124,14 +124,14 @@ export default function ProfilPage() {
 
   if (!isAuthenticated || loading) {
     return (
-      <div className="min-h-screen bg-ink-950 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="animate-spin text-lime" size={32} />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-ink-950">
+    <div className="min-h-screen">
       <Suspense fallback={null}>
         <DiscordCallbackHandler onLinked={refreshUser} />
       </Suspense>

@@ -14,7 +14,7 @@ export interface Proof {
 /* A bizonyíték-szelvények — a valós nyerő szelvények kinézetével */
 export function ProofCard({ proof }: { proof: Proof }) {
   return (
-    <div className="slip-card w-[320px] sm:w-[360px] flex-shrink-0 overflow-hidden">
+    <div className="slip-card w-[320px] sm:w-[360px] flex-shrink-0 overflow-hidden hover:-translate-y-1.5 hover:rotate-[0.6deg] hover:border-lime/30">
       {/* Fejléc */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
         <div className="flex items-center gap-2.5 min-w-0">

@@ -47,7 +47,7 @@ export default function TippekPage() {
     filter === "all" ? tips : tips.filter((t) => t.category === filter);
 
   return (
-    <div className="min-h-screen bg-ink-950">
+    <div className="min-h-screen">
       <Navbar />
       <main className="pt-28 sm:pt-32 pb-16 px-4 sm:px-6 lg:px-8 min-h-screen">
         <div className="max-w-4xl mx-auto">
