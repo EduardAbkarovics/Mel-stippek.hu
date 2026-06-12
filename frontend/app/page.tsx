@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import {
   motion,
   useReducedMotion,
   useScroll,
   useSpring,
   useTransform,
-  useVelocity,
 } from "framer-motion";
 import {
   Send,
@@ -132,122 +131,31 @@ function Reveal({
   );
 }
 
-/* Üstökös görgetésjelző a lap tetején: a fénysáv a feje felé egyre fényesebb,
-   a végén izzó pont. Fizika: lágy rugó enyhe túllövéssel; gyors görgetésnél a
-   fej felfénylik, megnő, a farka megnyúlik, és apró szikrák válnak le róla.
-   Szándékosan fut reduced-motion mellett is (apró, signature effekt). */
-type BarSpark = { id: number; left: number; dx: number; dy: number; size: number };
-
+/* Görgetésjelző a lap tetején: könnyű, GPU-barát fénysáv — csak transform
+   (scaleX) animálódik, nincs layout-újraszámolás, ezért nem laggol. A gradient
+   fényes vége adja a "fej" hatást. Lágy rugó enyhe túllövéssel. */
 function ScrollProgress() {
   const { scrollYProgress } = useScroll();
-  // lagyabb rugo → megallaskor enyhe tulloves ("fizika")
-  const progress = useSpring(scrollYProgress, { stiffness: 120, damping: 17, mass: 0.5 });
+  const progress = useSpring(scrollYProgress, { stiffness: 120, damping: 20, mass: 0.4 });
 
   // csak akkor latszik, ha mar elindult a gorgetes
   const opacity = useTransform(scrollYProgress, [0, 0.015], [0, 1]);
-
-  // gorgetesi sebesseg → a fej felfenylese, megnovese, faroknyulas
-  const velocity = useVelocity(progress);
-  const flare = useSpring(
-    useTransform(velocity, (v) => Math.min(Math.abs(v) * 3, 1)),
-    { stiffness: 260, damping: 40 }
-  );
-  const headScale = useTransform(flare, [0, 1], [1, 2.1]);
-  const haloOpacity = useTransform(flare, [0, 1], [0.4, 1]);
-  const tailWidth = useTransform(flare, [0, 1], [0, 56]);
-  const tailOpacity = useTransform(flare, [0.05, 0.5], [0, 1]);
-  const headLeft = useTransform(progress, (p) => `${p * 100}%`);
-
-  // szikrak: gyors gorgetesnel a fejbol levalo, elhalvanyulo pottyok
-  const [sparks, setSparks] = useState<BarSpark[]>([]);
-  const sparkId = useRef(0);
-  const lastSparkAt = useRef(0);
-  useEffect(() => {
-    return flare.on("change", (f) => {
-      const now = performance.now();
-      if (f < 0.5 || now - lastSparkAt.current < 80) return;
-      lastSparkAt.current = now;
-      const spark: BarSpark = {
-        id: sparkId.current++,
-        left: progress.get() * 100,
-        dx: (Math.random() - 0.5) * 36,
-        dy: 6 + Math.random() * 22,
-        size: 1.5 + Math.random() * 1.5,
-      };
-      setSparks((s) => [...s.slice(-9), spark]);
-    });
-  }, [flare, progress]);
 
   return (
     <div aria-hidden className="fixed inset-x-0 top-0 z-[60] h-[3px]">
       {/* halvany sin a teljes szelessegen */}
       <motion.div style={{ opacity }} className="absolute inset-0 bg-white/5" />
-      {/* fenysav: teal farok → lime → majdnem feher a fejnel */}
+      {/* fenysav: teal farok → lime → majdnem feher a vegen */}
       <motion.div style={{ scaleX: progress, opacity }} className="absolute inset-0 origin-left">
         <div
           className="h-full w-full"
           style={{
             background:
               "linear-gradient(90deg, rgba(87,200,168,0) 0%, rgba(87,200,168,0.5) 30%, #b9f24f 78%, #ecffc4 100%)",
-            boxShadow:
-              "0 0 14px rgba(185,242,79,0.35), 0 0 40px rgba(185,242,79,0.12)",
+            boxShadow: "0 0 14px rgba(185,242,79,0.35)",
           }}
         />
       </motion.div>
-      {/* sebessegre megnyulo farok a fej mogott */}
-      <motion.div
-        style={{ left: headLeft, width: tailWidth, opacity: tailOpacity, y: "-50%" }}
-        className="absolute top-1/2 h-[5px] -translate-x-full rounded-full"
-      >
-        <div
-          className="h-full w-full rounded-full"
-          style={{
-            background:
-              "linear-gradient(90deg, rgba(185,242,79,0) 0%, rgba(185,242,79,0.5) 60%, rgba(236,255,196,0.9) 100%)",
-            filter: "blur(1px)",
-          }}
-        />
-      </motion.div>
-      {/* ustokos-fej: izzo pont + halo */}
-      <motion.div
-        style={{ left: headLeft, x: "-50%", y: "-50%", opacity }}
-        className="absolute top-1/2"
-      >
-        <motion.div style={{ scale: headScale }} className="relative h-[9px] w-[9px]">
-          <motion.div
-            style={{ opacity: haloOpacity }}
-            className="absolute -inset-2 rounded-full bg-lime/60 blur-md"
-          />
-          <div
-            className="absolute inset-0 rounded-full"
-            style={{
-              background:
-                "radial-gradient(circle at 35% 35%, #ffffff, #ecffc4 35%, #b9f24f 75%)",
-              boxShadow:
-                "0 0 10px 2px rgba(185,242,79,0.8), 0 0 28px 6px rgba(185,242,79,0.3)",
-            }}
-          />
-        </motion.div>
-      </motion.div>
-      {/* levalo szikrak */}
-      {sparks.map((s) => (
-        <span
-          key={s.id}
-          onAnimationEnd={() => setSparks((list) => list.filter((x) => x.id !== s.id))}
-          className="bar-spark absolute top-[2px] rounded-full"
-          style={
-            {
-              left: `${s.left}%`,
-              width: s.size,
-              height: s.size,
-              background: "#ecffc4",
-              boxShadow: "0 0 6px rgba(185,242,79,0.9)",
-              "--dx": `${s.dx}px`,
-              "--dy": `${s.dy}px`,
-            } as React.CSSProperties
-          }
-        />
-      ))}
     </div>
   );
 }

@@ -1,16 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion, useMotionValue, useSpring } from "framer-motion";
+import { motion, useMotionValue } from "framer-motion";
 
-/* Egyedi egérkurzor: lime pont (azonnal követ) + lágyan utána úszó gyűrű.
-   - Interaktív elem (gomb/link) felett: a gyűrű kitágul és felfénylik.
-   - Kattintáskor: a gyűrű összehúzódik.
-   - Szövegmező felett: eltűnik, ott a natív szövegkurzor marad (globals.css).
+/* Egyedi egérkurzor: egyetlen lime pötty, ami közvetlenül követi az egeret
+   (nincs rugó, nincs gyűrű — GPU-barát, transform-only, nem laggol).
+   - Gomb/link felett kicsit megnő, kattintáskor összehúzódik.
+   - Szövegmező felett eltűnik, ott a natív szövegkurzor marad (globals.css).
    - Csak egér + finom pointer esetén aktív; touch eszközön natív kurzor marad.
-   - Szándékosan fut reduced-motion mellett is: ez közvetlen interakció-visszajelzés,
-     nem ambient mozgás (a tulaj döntése — sok gépen ki van kapcsolva a Windows
-     animáció, és ott is látszania kell). */
+   - Szándékosan fut reduced-motion mellett is: közvetlen interakció-visszajelzés. */
 
 const INTERACTIVE = "a, button, [role=button], input[type=submit], label, summary";
 const TEXTLIKE = "input, textarea, select, [contenteditable=true]";
@@ -23,9 +21,6 @@ export function CustomCursor() {
 
   const x = useMotionValue(-100);
   const y = useMotionValue(-100);
-  // a pont szorosan, a gyuru lagyan kesve kovet
-  const ringX = useSpring(x, { stiffness: 320, damping: 28, mass: 0.6 });
-  const ringY = useSpring(y, { stiffness: 320, damping: 28, mass: 0.6 });
 
   useEffect(() => {
     const fine = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
@@ -63,34 +58,8 @@ export function CustomCursor() {
 
   if (!enabled) return null;
 
-  const ringScale = pressed ? 0.8 : hovering ? 1.7 : 1;
-
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 z-[100]">
-      {/* uszo gyuru */}
-      <motion.div
-        style={{ x: ringX, y: ringY }}
-        className="absolute left-0 top-0"
-        animate={{ opacity: visible ? 1 : 0 }}
-        transition={{ duration: 0.2 }}
-      >
-        <div className="-translate-x-1/2 -translate-y-1/2">
-          <motion.div
-            animate={{ scale: ringScale }}
-            transition={{ type: "spring", stiffness: 380, damping: 24 }}
-            className="h-9 w-9 rounded-full border"
-            style={{
-              borderColor: hovering ? "rgba(185,242,79,0.9)" : "rgba(185,242,79,0.45)",
-              backgroundColor: hovering ? "rgba(185,242,79,0.08)" : "transparent",
-              boxShadow: hovering
-                ? "0 0 18px rgba(185,242,79,0.35), inset 0 0 12px rgba(185,242,79,0.12)"
-                : "0 0 10px rgba(185,242,79,0.12)",
-              transition: "border-color 0.25s, background-color 0.25s, box-shadow 0.25s",
-            }}
-          />
-        </div>
-      </motion.div>
-      {/* pont — szorosan koveti az egeret */}
       <motion.div
         style={{ x, y }}
         className="absolute left-0 top-0"
@@ -99,9 +68,9 @@ export function CustomCursor() {
       >
         <div className="-translate-x-1/2 -translate-y-1/2">
           <motion.div
-            animate={{ scale: pressed ? 0.6 : hovering ? 0.5 : 1 }}
-            transition={{ type: "spring", stiffness: 480, damping: 26 }}
-            className="h-1.5 w-1.5 rounded-full"
+            animate={{ scale: pressed ? 0.7 : hovering ? 1.8 : 1 }}
+            transition={{ type: "spring", stiffness: 480, damping: 30 }}
+            className="h-2 w-2 rounded-full"
             style={{
               background: "radial-gradient(circle at 35% 35%, #ecffc4, #b9f24f 70%)",
               boxShadow: "0 0 8px rgba(185,242,79,0.8)",
