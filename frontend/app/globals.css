@@ -314,6 +314,23 @@ html {
   animation-play-state: paused;
 }
 
+/* ── Egyedi kurzor: a natív pointer eltűnik, kivéve szövegmezőknél ─────────
+   A .has-custom-cursor osztályt a CustomCursor komponens teszi a <html>-re,
+   csak egér + finom pointer + nem reduced-motion esetén. */
+.has-custom-cursor,
+.has-custom-cursor * {
+  cursor: none !important;
+}
+.has-custom-cursor input,
+.has-custom-cursor textarea,
+.has-custom-cursor select,
+.has-custom-cursor [contenteditable="true"] {
+  cursor: text !important;
+}
+.has-custom-cursor select {
+  cursor: pointer !important;
+}
+
 /* Mozgásérzékeny felhasználóknak: az ambient animációk leállnak */
 @media (prefers-reduced-motion: reduce) {
   .ai-orb,

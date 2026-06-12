@@ -7,6 +7,7 @@ import {
   useScroll,
   useSpring,
   useTransform,
+  useVelocity,
 } from "framer-motion";
 import {
   Send,
@@ -131,20 +132,69 @@ function Reveal({
   );
 }
 
-/* Vékony lime csík a lap tetején — mutatja, hol jársz az oldalon */
+/* Üstökös görgetésjelző a lap tetején: a fénysáv a feje felé egyre fényesebb,
+   a végén izzó pont. Gyors görgetésnél a fej felfénylik és megnő, megálláskor
+   lenyugszik. Reduced motion: sima sáv, rugó és felfénylés nélkül. */
 function ScrollProgress() {
+  const reduce = useReducedMotion();
   const { scrollYProgress } = useScroll();
-  const scaleX = useSpring(scrollYProgress, {
-    stiffness: 160,
-    damping: 28,
-    mass: 0.4,
-  });
+  const spring = useSpring(scrollYProgress, { stiffness: 140, damping: 22, mass: 0.4 });
+  const progress = reduce ? scrollYProgress : spring;
+
+  // csak akkor latszik, ha mar elindult a gorgetes
+  const opacity = useTransform(scrollYProgress, [0, 0.015], [0, 1]);
+
+  // gorgetesi sebesseg → a fej felfenylese es megnovese
+  const velocity = useVelocity(progress);
+  const flare = useSpring(
+    useTransform(velocity, (v) => Math.min(Math.abs(v) * 3, 1)),
+    { stiffness: 260, damping: 40 }
+  );
+  const headScale = useTransform(flare, [0, 1], [1, 2.1]);
+  const haloOpacity = useTransform(flare, [0, 1], [0.4, 1]);
+  const headLeft = useTransform(progress, (p) => `${p * 100}%`);
+
   return (
-    <motion.div
-      aria-hidden
-      style={{ scaleX }}
-      className="fixed top-0 left-0 right-0 h-[2px] origin-left z-[60] bg-gradient-to-r from-lime via-lime to-[#57c8a8]"
-    />
+    <div aria-hidden className="fixed inset-x-0 top-0 z-[60] h-[3px]">
+      {/* halvany sin a teljes szelessegen */}
+      <motion.div style={{ opacity }} className="absolute inset-0 bg-white/5" />
+      {/* fenysav: teal farok → lime → majdnem feher a fejnel */}
+      <motion.div style={{ scaleX: progress, opacity }} className="absolute inset-0 origin-left">
+        <div
+          className="h-full w-full"
+          style={{
+            background:
+              "linear-gradient(90deg, rgba(87,200,168,0) 0%, rgba(87,200,168,0.5) 30%, #b9f24f 78%, #ecffc4 100%)",
+            boxShadow:
+              "0 0 14px rgba(185,242,79,0.35), 0 0 40px rgba(185,242,79,0.12)",
+          }}
+        />
+      </motion.div>
+      {/* ustokos-fej: izzo pont + halo */}
+      <motion.div
+        style={{ left: headLeft, x: "-50%", y: "-50%", opacity }}
+        className="absolute top-1/2"
+      >
+        <motion.div
+          style={{ scale: reduce ? 1 : headScale }}
+          className="relative h-[9px] w-[9px]"
+        >
+          <motion.div
+            style={{ opacity: reduce ? 0.4 : haloOpacity }}
+            className="absolute -inset-2 rounded-full bg-lime/60 blur-md"
+          />
+          <div
+            className="absolute inset-0 rounded-full"
+            style={{
+              background:
+                "radial-gradient(circle at 35% 35%, #ffffff, #ecffc4 35%, #b9f24f 75%)",
+              boxShadow:
+                "0 0 10px 2px rgba(185,242,79,0.8), 0 0 28px 6px rgba(185,242,79,0.3)",
+            }}
+          />
+        </motion.div>
+      </motion.div>
+    </div>
   );
 }
 

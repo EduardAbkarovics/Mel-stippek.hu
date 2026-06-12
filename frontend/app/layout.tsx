@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Poppins, Press_Start_2P } from "next/font/google";
 import { Toaster } from "sonner";
 import { PaperShadersBg } from "@/components/ui/background-paper-shaders";
+import { CustomCursor } from "@/components/ui/custom-cursor";
 import { AskAi } from "@/components/ask-ai";
 import { SoundFx } from "@/components/sound-fx";
 import { VisitTracker } from "@/components/visit-tracker";
@@ -32,6 +33,7 @@ export default function RootLayout({
     <html lang="hu">
       <body className={`${poppins.variable} ${pixel.variable} font-sans antialiased`}>
         <PaperShadersBg />
+        <CustomCursor />
         {children}
         <AskAi />
         <SoundFx />
