@@ -66,11 +66,36 @@ fn send(http: reqwest::Client, webhook: String, content: String) {
     if webhook.is_empty() {
         return;
     }
+    // Discord üzenet limit: 2000 karakter
+    let content: String = content.chars().take(1900).collect();
     tokio::spawn(async move {
         if let Err(e) = http.post(&webhook).json(&json!({ "content": content })).send().await {
             tracing::warn!("Discord webhook hiba: {e}");
         }
     });
+}
+
+/// Csomag címke emojival a Discord üzenetekhez.
+pub fn package_pretty(pkg: &str) -> String {
+    match pkg {
+        "foci" => "⚽ Foci".into(),
+        "esport" => "🎮 E-sport".into(),
+        "elo" => "🔴 Élő".into(),
+        other => other.to_string(),
+    }
+}
+
+/// Másodpercek emberi formában: "37 mp", "4 perc 12 mp", "1 óra 3 perc".
+pub fn fmt_duration(secs: u64) -> String {
+    if secs < 60 {
+        return format!("{secs} mp");
+    }
+    let (h, m, s) = (secs / 3600, (secs % 3600) / 60, secs % 60);
+    if h > 0 {
+        format!("{h} óra {m} perc")
+    } else {
+        format!("{m} perc {s} mp")
+    }
 }
 
 /// UTC → budapesti idő (EU-s nyári időszámítás: március utolsó vasárnap 01:00 UTC
@@ -179,36 +204,116 @@ pub fn notify_signup(
     });
 }
 
-/// Oldal megtekintés értesítés — fiók adatokkal, ha be van jelentkezve.
+/// Bejelentkezett látogató adatai a látogatás-értesítőkhöz.
+pub struct VisitAccount {
+    pub email: String,
+    pub name: Option<String>,
+    pub telegram: Option<String>,
+    /// Előre formázott aktív előfizetés sorok, pl. "⚽ Foci — 2026-07-01-ig 🔁".
+    pub subs: Vec<String>,
+}
+
+/// Fiók + előfizetés sorok az értesítőkbe.
+fn account_lines(account: &Option<VisitAccount>) -> String {
+    match account {
+        Some(a) => {
+            let mut s = format!("👤 Fiók: ✅ bejelentkezve — `{}`", a.email);
+            if let Some(n) = &a.name {
+                s.push_str(&format!(" ({n})"));
+            }
+            if let Some(t) = &a.telegram {
+                s.push_str(&format!(" — TG: @{t}"));
+            }
+            if a.subs.is_empty() {
+                s.push_str("\n⭐ Előfizetés: ❌ nincs aktív csomagja");
+            } else {
+                s.push_str(&format!("\n⭐ Előfizetés: {}", a.subs.join(" · ")));
+            }
+            s
+        }
+        None => "👤 Fiók: ❌ nincs bejelentkezve".into(),
+    }
+}
+
+/// Oldal megtekintés értesítés — érkezéskor, fiók adatokkal, ha be van jelentkezve.
 pub fn notify_visit(
     http: reqwest::Client,
     webhook: String,
     path: String,
     ip: String,
     ua: String,
-    account: Option<(String, Option<String>, Option<String>)>, // (email, név, telegram username)
+    account: Option<VisitAccount>,
 ) {
     if webhook.is_empty() {
         return;
     }
     tokio::spawn(async move {
         let geo = geo_lookup(&http, &ip).await;
-        let account_line = match account {
-            Some((email, name, tg)) => {
-                let mut s = format!("✅ van fiókja — `{email}`");
-                if let Some(n) = name {
-                    s.push_str(&format!(" ({n})"));
-                }
-                if let Some(t) = tg {
-                    s.push_str(&format!(" — TG: @{t}"));
-                }
-                s
-            }
-            None => "❌ nincs fiókja".into(),
+        let content = format!(
+            "👀 **Új látogató az oldalon!** — `{path}`\n\
+             🕐 Időpont: **{}**\n\
+             🌍 IP: `{ip}` — {geo}\n\
+             💻 Platform: {}\n\
+             {}",
+            budapest_time(chrono::Utc::now()),
+            device_from_ua(&ua),
+            account_lines(&account),
+        );
+        send(http, webhook, content);
+    });
+}
+
+/// A látogatás végi összegzés adatai.
+pub struct VisitSummary {
+    pub ip: String,
+    pub ua: String,
+    pub account: Option<VisitAccount>,
+    pub started_at_utc: chrono::DateTime<chrono::Utc>,
+    pub duration_secs: u64,
+    /// Megnézett oldalak, sorrendben.
+    pub pages: Vec<String>,
+    /// (gomb/link felirat, hányszor kattintott rá) — az első kattintás sorrendjében.
+    pub clicks: Vec<(String, u32)>,
+}
+
+/// Látogatás összegzés — távozáskor küldi a frontend: meddig volt itt, mit nézett, mire kattintott.
+pub fn notify_visit_summary(http: reqwest::Client, webhook: String, s: VisitSummary) {
+    if webhook.is_empty() {
+        return;
+    }
+    tokio::spawn(async move {
+        let geo = geo_lookup(&http, &s.ip).await;
+        let pages = if s.pages.is_empty() {
+            "`/`".to_string()
+        } else {
+            s.pages.iter().map(|p| format!("`{p}`")).collect::<Vec<_>>().join(" → ")
+        };
+        let clicks = if s.clicks.is_empty() {
+            "— nem kattintott semmire".to_string()
+        } else {
+            let total: u32 = s.clicks.iter().map(|(_, c)| c).sum();
+            let list = s
+                .clicks
+                .iter()
+                .map(|(l, c)| if *c > 1 { format!("„{l}” ×{c}") } else { format!("„{l}”") })
+                .collect::<Vec<_>>()
+                .join(" · ");
+            format!("{total} db — {list}")
         };
         let content = format!(
-            "👀 **Látogatás** — `{path}`\n🌍 IP: `{ip}` — {geo}\n💻 Eszköz: {}\n👤 Fiók: {account_line}",
-            device_from_ua(&ua),
+            "📋 **Látogatás összegzés**\n\
+             🕐 Érkezett: **{arrived}**\n\
+             ⏱️ Tartózkodás: **{dur}**\n\
+             🌍 IP: `{ip}` — {geo}\n\
+             💻 Platform: {dev}\n\
+             {account}\n\
+             📄 Megnézett oldalak: {pages}\n\
+             🖱️ Kattintások: {clicks}",
+            arrived = budapest_time(s.started_at_utc),
+            dur = fmt_duration(s.duration_secs),
+            ip = s.ip,
+            dev = device_from_ua(&s.ua),
+            account = account_lines(&s.account),
         );
         send(http, webhook, content);
     });

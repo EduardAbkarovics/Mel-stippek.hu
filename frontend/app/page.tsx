@@ -24,6 +24,7 @@ import { Footer } from "@/components/footer";
 import { Pricing } from "@/components/pricing";
 import { ProofSlider } from "@/components/ui/image-auto-slider";
 import { GlowCard } from "@/components/ui/glow-card";
+import { GooeyText } from "@/components/ui/gooey-text-morphing";
 import { Magnetic } from "@/components/ui/magnetic";
 
 const TELEGRAM_URL = "https://t.me/+ilO15-pADJ8xNDZk";
@@ -99,11 +100,9 @@ const STEPS = [
   },
 ];
 
-// A hero cím szavanként úszik be, blur-ből élesedve
-const TITLE_LINES = [
-  { words: ["Fogadj", "okosan."], accent: false },
-  { words: ["Nyerj", "velünk."], accent: true },
-];
+// A hero cím: az első sor szavanként úszik be, a második sor gooey-morphtól vált
+const TITLE_WORDS = ["Fogadj", "okosan."];
+const MORPH_WORDS = ["Nyerj velünk.", "Focira.", "E-sportra.", "Élőben."];
 
 // Görgetésre úszik be, expo kifutással — egyszer játszódik le
 const EASE = [0.16, 1, 0.3, 1] as const;
@@ -186,32 +185,42 @@ export default function Home() {
           </motion.div>
 
           <h1 className="text-3xl sm:text-5xl md:text-6xl font-extrabold leading-tight tracking-tight">
-            {TITLE_LINES.map((line, li) => (
-              <span key={li} className="block">
-                {line.words.map((word, wi) => (
-                  <motion.span
-                    key={word}
-                    className={
-                      line.accent ? "inline-block text-lime text-glow" : "inline-block"
-                    }
-                    initial={{ opacity: 0, y: 26, filter: "blur(10px)" }}
-                    animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                    transition={
-                      reduce
-                        ? { duration: 0 }
-                        : {
-                            duration: 0.75,
-                            delay: 0.12 + (li * line.words.length + wi) * 0.09,
-                            ease: EASE,
-                          }
-                    }
-                  >
-                    {word}
-                    {wi < line.words.length - 1 ? "\u00A0" : ""}
-                  </motion.span>
-                ))}
-              </span>
-            ))}
+            <span className="block">
+              {TITLE_WORDS.map((word, wi) => (
+                <motion.span
+                  key={word}
+                  className="inline-block"
+                  initial={{ opacity: 0, y: 26, filter: "blur(10px)" }}
+                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                  transition={
+                    reduce
+                      ? { duration: 0 }
+                      : { duration: 0.75, delay: 0.12 + wi * 0.09, ease: EASE }
+                  }
+                >
+                  {word}
+                  {wi < TITLE_WORDS.length - 1 ? "\u00A0" : ""}
+                </motion.span>
+              ))}
+            </span>
+            {/* A lime sor gooey-morph szavakkal valt; a glow a thresholdon kivul
+                (drop-shadow), hogy a filter ne torzitsa el */}
+            <motion.span
+              className="block [filter:drop-shadow(0_0_28px_rgba(185,242,79,0.35))]"
+              initial={{ opacity: 0, y: 26 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={
+                reduce ? { duration: 0 } : { duration: 0.75, delay: 0.3, ease: EASE }
+              }
+            >
+              <GooeyText
+                texts={MORPH_WORDS}
+                morphTime={1.2}
+                cooldownTime={2.8}
+                className="h-[1.25em]"
+                textClassName="text-lime"
+              />
+            </motion.span>
           </h1>
 
           <motion.p
