@@ -1,24 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { MeshGradient } from "@paper-design/shaders-react";
+import { useEffect, useRef } from "react";
 
-/* Élő háttér, három rétegben:
-   1. Lassan hullámzó mesh-gradient shader (paper-design, WebGL) a márka
-      színeivel — reduced motion esetén speed=0-val áll.
-   2. Apró fénypor-pöttyök canvason: nagyon lassan felfelé sodródnak, oldalra
-      ringanak, pislákolnak. Szándékosan futnak reduced-motion mellett is —
-      aprócska, signature effekt (a tulaj döntése).
-   3. Vignetta + filmszemcse, hogy a szöveg olvasható maradjon. */
-
-const COLORS = [
-  "#0a0b0d", // ink-950 — az alap
-  "#0c100b", // ink, leheletnyi zölddel
-  "#1c2c0e", // sötét olajzöld-lime folt
-  "#0a0b0d", // még egy ink folt, hogy a sötét domináljon
-  "#0c241c", // mély teal derengés
-  "#2c420f", // lime fény — a leglátványosabb folt
-];
+/* Élő háttér: tiszta fekete (ink-950) alap, rajta apró fénypor-pöttyök —
+   nagyon lassan felfelé sodródnak, oldalra ringanak, pislákolnak. A nagyobbak
+   lágy fényudvart kapnak. Szándékosan futnak reduced-motion mellett is:
+   aprócska, nem zavaró signature effekt (a tulaj döntése). */
 
 // pötty-színek: lime, teal, fehér — alacsony alfával keverve
 const DOT_COLORS: [number, number, number][] = [
@@ -123,31 +110,10 @@ function FloatingDots() {
   return <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />;
 }
 
-export function PaperShadersBg() {
-  const [reduce, setReduce] = useState(false);
-  useEffect(() => {
-    setReduce(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-  }, []);
-
+export function FloatingDotsBg() {
   return (
     <div aria-hidden className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
-      <MeshGradient
-        className="absolute inset-0 h-full w-full"
-        colors={COLORS}
-        speed={reduce ? 0 : 0.45}
-        distortion={0.8}
-        swirl={0.6}
-      />
       <FloatingDots />
-      {/* vignetta: a szélek sötétek maradnak, a tartalom olvasható */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(ellipse 90% 75% at 50% 35%, transparent 45%, rgba(10,11,13,0.6) 100%)",
-        }}
-      />
-      <div className="grain absolute inset-0" />
     </div>
   );
 }
