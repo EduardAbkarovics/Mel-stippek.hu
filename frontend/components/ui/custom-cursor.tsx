@@ -7,7 +7,10 @@ import { motion, useMotionValue, useSpring } from "framer-motion";
    - Interaktív elem (gomb/link) felett: a gyűrű kitágul és felfénylik.
    - Kattintáskor: a gyűrű összehúzódik.
    - Szövegmező felett: eltűnik, ott a natív szövegkurzor marad (globals.css).
-   - Csak egér + finom pointer esetén aktív; touch és reduced motion: natív kurzor. */
+   - Csak egér + finom pointer esetén aktív; touch eszközön natív kurzor marad.
+   - Szándékosan fut reduced-motion mellett is: ez közvetlen interakció-visszajelzés,
+     nem ambient mozgás (a tulaj döntése — sok gépen ki van kapcsolva a Windows
+     animáció, és ott is látszania kell). */
 
 const INTERACTIVE = "a, button, [role=button], input[type=submit], label, summary";
 const TEXTLIKE = "input, textarea, select, [contenteditable=true]";
@@ -26,8 +29,7 @@ export function CustomCursor() {
 
   useEffect(() => {
     const fine = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (!fine || reduce) return;
+    if (!fine) return;
 
     setEnabled(true);
     document.documentElement.classList.add("has-custom-cursor");

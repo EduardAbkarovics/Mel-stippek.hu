@@ -314,6 +314,23 @@ html {
   animation-play-state: paused;
 }
 
+/* ── A scroll-jelző fejéből leváló szikrák ─────────────────────────────────
+   A --dx/--dy custom property-t a komponens adja (random irány). */
+.bar-spark {
+  animation: bar-spark 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  pointer-events: none;
+}
+@keyframes bar-spark {
+  from {
+    opacity: 1;
+    transform: translate(0, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate(var(--dx, 0px), var(--dy, 16px));
+  }
+}
+
 /* ── Egyedi kurzor: a natív pointer eltűnik, kivéve szövegmezőknél ─────────
    A .has-custom-cursor osztályt a CustomCursor komponens teszi a <html>-re,
    csak egér + finom pointer + nem reduced-motion esetén. */
